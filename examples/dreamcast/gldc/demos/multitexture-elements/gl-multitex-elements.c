@@ -41,7 +41,7 @@ void RenderCallback(GLuint texID0, GLuint texID1) {
     glEnableClientState(GL_VERTEX_ARRAY);
     glEnableClientState(GL_TEXTURE_COORD_ARRAY);
     glEnableClientState(GL_COLOR_ARRAY);
-    glEnableClientState(GL_INDEX_ARRAY);
+    //glEnableClientState(GL_INDEX_ARRAY);
     
     /* Bind texture to GL_TEXTURE0_ARB and set texture parameters */
     glActiveTextureARB(GL_TEXTURE0_ARB); 
@@ -70,7 +70,7 @@ void RenderCallback(GLuint texID0, GLuint texID1) {
     glClientActiveTextureARB(GL_TEXTURE0_ARB); 
   
     /* Bind the Color Array */
-    glColorPointer(1, GL_UNSIGNED_INT, 0, ARGB_ARRAY);
+    //glColorPointer(1, GL_UNSIGNED_INT, 0, ARGB_ARRAY); TODO
 
     /* Bind the Vertex Array */
     glVertexPointer(3, GL_FLOAT, 0, VERTEX_ARRAY);
@@ -89,7 +89,7 @@ void RenderCallback(GLuint texID0, GLuint texID1) {
     glDisable(GL_TEXTURE_2D);
  
     /* Disable Vertex, Color and Texture Coord Arrays */
-    glDisableClientState(GL_INDEX_ARRAY);
+    //glDisableClientState(GL_INDEX_ARRAY);
     glDisableClientState(GL_COLOR_ARRAY);
     glDisableClientState(GL_TEXTURE_COORD_ARRAY);
     glDisableClientState(GL_VERTEX_ARRAY);

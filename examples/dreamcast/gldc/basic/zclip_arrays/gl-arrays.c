@@ -73,7 +73,7 @@ void RenderCallback(GLuint texID) {
     glEnableClientState(GL_COLOR_ARRAY);
     
     /* Bind Vertex Array Data, Using Strided Vertices */
-    glColorPointer(1, GL_UNSIGNED_INT, sizeof(Vertex3tc), &vertex[0].color);
+    //glColorPointer(1, GL_UNSIGNED_INT, sizeof(Vertex3tc), &vertex[0].color);
     glTexCoordPointer(2, GL_FLOAT, sizeof(Vertex3tc), vertex[0].texCoord);
     glVertexPointer(3, GL_FLOAT, sizeof(Vertex3tc), vertex[0].position);    
     

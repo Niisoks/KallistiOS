@@ -23,7 +23,8 @@
 
 static GLuint tex[2];
 
-static char ENV_MODES[4][24] = { "GL_REPLACE\0", "GL_MODULATE\0", "GL_DECAL\0", "GL_MODULATEALPHA\0" };
+static char ENV_MODES_STRS[4][24] = { "GL_REPLACE\0", "GL_MODULATE\0", "GL_DECAL\0", "GL_MODULATEALPHA\0" };
+static int ENV_MODES[4] = { GL_REPLACE, GL_MODULATE, GL_DECAL, GL_MODULATE };
 static unsigned char ENV_MODE = 0;
 static unsigned char BLEND = 0;
 
@@ -63,7 +64,7 @@ void RenderCallback(void) {
 
     glBlendFunc(GL_SRC_ALPHA, GL_DST_ALPHA);
 
-    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, ENV_MODE);
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, ENV_MODES[ENV_MODE]);
 
     glDrawQuads(80, 0, 480, 480, 1, 0xFF, 0x00, 0x00, 0xFF, tex[1], 1);
 
@@ -88,22 +89,22 @@ int InputCallback(void) {
 
         if(state->buttons & CONT_DPAD_UP) {
             ENV_MODE = 0;
-            printf("%s\n", ENV_MODES[ENV_MODE]);
+            printf("%s\n", ENV_MODES_STRS[ENV_MODE]);
         }
 
         if(state->buttons & CONT_DPAD_DOWN) {
             ENV_MODE = 1;
-            printf("%s\n", ENV_MODES[ENV_MODE]);
+            printf("%s\n", ENV_MODES_STRS[ENV_MODE]);
         }
 
         if(state->buttons & CONT_DPAD_LEFT) {
             ENV_MODE = 2;
-            printf("%s\n", ENV_MODES[ENV_MODE]);
+            printf("%s\n", ENV_MODES_STRS[ENV_MODE]);
         }
 
         if(state->buttons & CONT_DPAD_RIGHT) {
             ENV_MODE = 3;
-            printf("%s\n", ENV_MODES[ENV_MODE]);
+            printf("%s\n", ENV_MODES_STRS[ENV_MODE]);
         }
 
         if(state->buttons & CONT_A) {

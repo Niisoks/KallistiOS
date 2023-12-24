@@ -6,19 +6,21 @@
 
    Load A PVR Texture to the PVR using Open GL
 */
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdint.h>
 
-#include <kos.h>
 #include <GL/gl.h>
-#include <GL/glext.h>
 #include <GL/glu.h>
+#include <GL/glkos.h>
+#include <GL/glext.h>
 
-#define MAX(x, y) ((x > y) ? x : y)
 #define PVR_HDR_SIZE 0x20
+#define MAX(x, y) ((x > y) ? x : y)
 
 static GLuint PVR_TextureHeight(unsigned char *HDR);
 static GLuint PVR_TextureWidth(unsigned char *HDR);
 static GLuint PVR_TextureFormat(unsigned char *HDR);
-static GLuint PVR_TextureColor(unsigned char *HDR);
 
 static GLuint _glGetMipmapLevelCount(GLuint width, GLuint height) {
     return 1 + floor(log2(MAX(width, height)));
@@ -50,9 +52,9 @@ static GLuint _glGetMipmapDataSize(GLuint width, GLuint height) {
    glMipMap should be passed as 1 if Open GL should calculate the Mipmap levels, 0 otherwise */
 GLuint glTextureLoadPVR(char *fname, unsigned char isMipMapped, unsigned char glMipMap) {
     FILE *tex = NULL;
-    uint16 *TEX0 = NULL;
-    uint8 HDR[PVR_HDR_SIZE];
-    GLuint texID, texSize, texW, texH, texFormat, texColor;
+    uint16_t *TEX0 = NULL;
+    uint8_t HDR[PVR_HDR_SIZE];
+    GLuint texID, texSize, texW, texH, texFormat;
 
     /* Open the PVR texture file, and get its file size */
     tex = fopen(fname, "rb");
@@ -74,7 +76,6 @@ GLuint glTextureLoadPVR(char *fname, unsigned char isMipMapped, unsigned char gl
     texW = PVR_TextureWidth(HDR);
     texH = PVR_TextureHeight(HDR);
     texFormat = PVR_TextureFormat(HDR);
-    texColor = PVR_TextureColor(HDR);
 
     /* Allocate Some Memory for the texture. If we are using Open GL to build the MipMap,
        we need to allocate enough space to hold the MipMap texture levels. */
@@ -85,91 +86,84 @@ GLuint glTextureLoadPVR(char *fname, unsigned char isMipMapped, unsigned char gl
 
     fread(TEX0, 1, texSize, tex); /* Read in the PVR texture data */
 
-    /* If requested, tell Open GL to build the MipMap levels for the texture. */
-    /* For now, the input texture to gluBuild2DMipmaps must have a width and height divisible by two. */
-    /* Also, color format is only set by the 2nd to last parameter, here as texColor.
-       The color format may be one of the three: PVR_TXRFMT_RGB565, PVR_TXRFMT_ARGB1555, or PVR_TXRFMT_ARGB4444 */
-    if(!isMipMapped && glMipMap)
-        gluBuild2DMipmaps(GL_TEXTURE_2D, GL_RGB, texW, texH, GL_RGB, texColor, TEX0);
-
     /* Generate and bind a texture as normal for Open GL */
     glGenTextures(1, &texID);
     glBindTexture(GL_TEXTURE_2D, texID);
 
-    if(texFormat & PVR_TXRFMT_VQ_ENABLE)
+    if(texFormat != GL_UNSIGNED_SHORT_5_6_5)
         glCompressedTexImage2D(GL_TEXTURE_2D,
-                               (isMipMapped || glMipMap) ? 1 : 0,
- 	                       texFormat | texColor,
+                           0,
+ 	                       texFormat,
  	                       texW,
  	                       texH,
  	                       0,
  	                       texSize,
  	                       TEX0);
-    else
+    else {
+        fprintf(stderr, "%x\n", texFormat);
         glTexImage2D(GL_TEXTURE_2D,
-                     (isMipMapped || glMipMap) ? 1 : 0,
+                     0,
                      GL_RGB,
                      texW, texH,
                      0,
                      GL_RGB,
-                     texFormat | texColor,
+                     texFormat,
                      TEX0);
+        if(!isMipMapped && glMipMap)
+            glGenerateMipmapEXT(GL_TEXTURE_2D);
+    }
 
     free(TEX0);
 
     return texID;
 }
 
-static GLuint PVR_TextureColor(unsigned char *HDR) {
-    switch((GLuint)HDR[PVR_HDR_SIZE - 8]) {
-        case 0x00:
-            return PVR_TXRFMT_ARGB1555; //(bilevel translucent alpha 0,255)
-
-        case 0x01:
-            return PVR_TXRFMT_RGB565;   //(non translucent RGB565 )
-
-        case 0x02:
-            return PVR_TXRFMT_ARGB4444; //(translucent alpha 0-255)
-
-        case 0x03:
-            return PVR_TXRFMT_YUV422;   //(non translucent UYVY )
-
-        case 0x04:
-            return PVR_TXRFMT_BUMP;     //(special bump-mapping format)
-
-        case 0x05:
-            return PVR_TXRFMT_PAL4BPP;  //(4-bit palleted texture)
-
-        case 0x06:
-            return PVR_TXRFMT_PAL8BPP;  //(8-bit palleted texture)
-
-        default:
-            return PVR_TXRFMT_RGB565;
-    }
-}
-
 static GLuint PVR_TextureFormat(unsigned char *HDR) {
-    switch((GLuint)HDR[PVR_HDR_SIZE - 7]) {
-        case 0x01:
-            return PVR_TXRFMT_TWIDDLED;                           //SQUARE TWIDDLED
+    GLuint color = (GLuint)HDR[PVR_HDR_SIZE - 8];
+    GLuint format = (GLuint)HDR[PVR_HDR_SIZE - 7];
 
-        case 0x03:
-            return PVR_TXRFMT_VQ_ENABLE;                          //VQ TWIDDLED
+    GLboolean twiddled = format == 0x01;
+    GLboolean compressed = (format == 0x10 || format == 0x03);
 
-        case 0x09:
-            return PVR_TXRFMT_NONTWIDDLED;                        //RECTANGLE
-
-        case 0x0B:
-            return PVR_TXRFMT_STRIDE | PVR_TXRFMT_NONTWIDDLED;    //RECTANGULAR STRIDE
-
-        case 0x0D:
-            return PVR_TXRFMT_TWIDDLED;                           //RECTANGULAR TWIDDLED
-
-        case 0x10:
-            return PVR_TXRFMT_VQ_ENABLE | PVR_TXRFMT_NONTWIDDLED; //SMALL VQ
-
-        default:
-            return PVR_TXRFMT_NONE;
+    if(compressed) {
+        if(twiddled) {
+            switch(color) {
+                case 0x0: {
+                    return GL_COMPRESSED_ARGB_1555_VQ_TWID_KOS;
+                } break;
+                case 0x01: {
+                    return GL_COMPRESSED_RGB_565_VQ_TWID_KOS;
+                } break;
+                case 0x02: {
+                    return GL_COMPRESSED_ARGB_4444_VQ_TWID_KOS;
+                }
+                break;
+                default:
+                    fprintf(stderr, "Invalid texture format");
+                    return 0;
+            }
+        } else {
+            switch(color) {
+                case 0: {
+                    return GL_COMPRESSED_ARGB_1555_VQ_KOS;
+                } break;
+                case 1: {
+                    return GL_COMPRESSED_RGB_565_VQ_KOS;
+                } break;
+                case 2: {
+                    return GL_COMPRESSED_ARGB_4444_VQ_KOS;
+                }
+                break;
+                default:
+                    fprintf(stderr, "Invalid texture format");
+                    return 0;
+            }
+        }
+    } else {
+        if(color == 1) {
+            return GL_UNSIGNED_SHORT_5_6_5;
+        }
+        return 0;
     }
 }
 

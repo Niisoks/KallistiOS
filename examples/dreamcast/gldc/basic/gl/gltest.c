@@ -201,6 +201,10 @@ int main(int argc, char **argv) {
         glRotatef(r, 0.0f, 1.0f, 0.5f);
         glPushMatrix();
 
+        /* Always draw 2 cubes as solids */
+        glEnable(GL_CULL_FACE);
+        glDisable(GL_BLEND);
+
         glTranslatef(-5.0f, 0.0f, 0.0f);
         cube(r);
 
