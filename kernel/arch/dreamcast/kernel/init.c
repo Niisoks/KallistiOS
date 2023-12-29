@@ -18,6 +18,7 @@
 #include <arch/rtc.h>
 #include <arch/timer.h>
 #include <arch/wdt.h>
+#include <dc/perfctr.h>
 #include <dc/ubc.h>
 #include <dc/pvr.h>
 #include <dc/vmufs.h>
@@ -154,7 +155,7 @@ int  __weak arch_auto_init(void) {
     hardware_sys_init();        /* DC low-level hardware init */
 
     /* Initialize our timer */
-    timer_ns_enable();
+    perf_cntr_timer_enable();
     timer_ms_enable();
     rtc_init();
 
