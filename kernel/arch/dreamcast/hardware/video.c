@@ -514,9 +514,61 @@ void vid_clear(uint8_t r, uint8_t g, uint8_t b) {
             sq_set16(vram_s, pixel16, (vid_mode->width * vid_mode->height) * vid_pmode_bpp[PM_RGB565]);
             break;
         case PM_RGB888P:
-            /* Need to come up with some way to fill this quickly. */
-            dbglog(DBG_WARNING, "vid_clear: PM_RGB888P not supported, clearing with 0\n");
-            sq_set32(vram_l, 0, (vid_mode->width * vid_mode->height) * vid_pmode_bpp[PM_RGB888P]);
+            uint32_t bgrb = ((b << 24) | (g << 16) | (r << 8) | b);
+            uint32_t grbg = ((g << 24) | (r << 16) | (b << 8) | g);
+            uint32_t rbgr = ((r << 24) | (b << 16) | (g << 8) | r);
+
+            uint32_t *d = SQ_MASK_DEST(vram_l);
+            size_t n = (vid_mode->width * vid_mode->height) * vid_pmode_bpp[PM_RGB888P];
+            int selector = 0;
+
+            sq_lock(vram_l);
+
+            /* Write them as many times necessary */
+            n >>= 5;
+
+            while(n--) {
+                switch(selector) {
+                    case 0:
+                        d[0] = bgrb;
+                        d[1] = grbg;
+                        d[2] = rbgr;
+                        d[3] = bgrb;
+                        d[4] = grbg;
+                        d[5] = rbgr;
+                        d[6] = bgrb;
+                        d[7] = grbg;
+                        break;
+                    case 1:
+                        d[0] = rbgr;
+                        d[1] = bgrb;
+                        d[2] = grbg;
+                        d[3] = rbgr;
+                        d[4] = bgrb;
+                        d[5] = grbg;
+                        d[6] = rbgr;
+                        d[7] = bgrb;
+                        break;
+                    case 2:
+                        d[0] = grbg;
+                        d[1] = rbgr;
+                        d[2] = bgrb;
+                        d[3] = grbg;
+                        d[4] = rbgr;
+                        d[5] = bgrb;
+                        d[6] = grbg;
+                        d[7] = rbgr;
+                        break;
+                }
+
+                selector = (selector + 1) % 3;
+
+                sq_flush(d);
+                d += 8;
+            }
+
+            sq_unlock();
+
             break;
         case PM_RGB0888:
             pixel32 = (r << 16) | (g << 8) | (b << 0);
