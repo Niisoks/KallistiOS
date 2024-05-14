@@ -5,6 +5,7 @@
    Copyright (C) 2001 Anders Clerwall (scav)
    Copyright (C) 2000-2001 Megan Potter
    Copyright (C) 2023-2024 Donald Haase
+   Copyright (C) 2024 Andy Barajas
  */
 
 #include <dc/video.h>
