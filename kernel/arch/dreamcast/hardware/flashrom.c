@@ -41,7 +41,7 @@ static void strcpy_with_term(char *dest, const char *src, size_t destsize) {
     dest[srclength] = '\0';
 }
 
-int flashrom_info(uint32_t part_id, int *start_out, int *size_out) {
+int flashrom_info(uint32_t part_id, uint32_t *start_out, uint32_t *size_out) {
     uint32_t  ptrs[2];
     int old, rv;
 
@@ -106,7 +106,7 @@ static int flashrom_calc_crc(uint8_t *buffer) {
 }
 
 int flashrom_get_block(uint32_t part_id, uint32_t block_id, uint8_t *buffer_out) {
-    int start, size;
+    uint32_t start, size;
     int bmcnt;
     char magic[18];
     uint8_t *bitmap;
@@ -142,7 +142,7 @@ int flashrom_get_block(uint32_t part_id, uint32_t block_id, uint8_t *buffer_out)
 
     /* This is messy but simple and safe... */
     if(bmcnt > 65536) {
-        dbglog(DBG_ERROR, "flashrom_get_block: bogus part %p/%d\n", (void *)start, size);
+        dbglog(DBG_ERROR, "flashrom_get_block: bogus part %p/%ld\n", (void *)start, size);
         return FLASHROM_ERR_BOGUS_PART;
     }
 
@@ -207,16 +207,11 @@ int flashrom_get_block(uint32_t part_id, uint32_t block_id, uint8_t *buffer_out)
     return FLASHROM_ERR_NOT_FOUND;
 }
 
-/* This internal function returns the system config block. As far as I
-   can determine, this is always partition 2, logical block 5. */
-static int flashrom_load_syscfg(uint8_t *buffer) {
-    return flashrom_get_block(FLASHROM_PT_BLOCK_1, FLASHROM_B1_SYSCFG, buffer);
-}
-
 /* Structure of the system config block (as much as we know anyway). */
 typedef struct {
     uint16_t  block_id;    /* Should be 5 */
-    uint8_t   date[4];     /* Last set time (secs since 1/1/1950 in LE) */
+    uint16_t  time_low;    /* Last set time (secs since 1/1/1950 00:00) */
+    uint16_t  time_high;
     uint8_t   unk1;        /* Unknown */
     uint8_t   lang;        /* Language ID */
     uint8_t   mono;        /* Mono/stereo setting */
@@ -226,24 +221,25 @@ typedef struct {
 } syscfg_t;
 
 int flashrom_get_syscfg(flashrom_syscfg_t *out) {
-    uint8_t buffer[64];
-    int rv;
+    uint8_t buffer[sizeof(syscfg_t)];
     syscfg_t *sc = (syscfg_t *)buffer;
-
+    int rv;
+    
     /* Get the system config block */
-    rv = flashrom_load_syscfg(buffer);
+    rv = flashrom_get_block(FLASHROM_PT_BLOCK_1, FLASHROM_B1_SYSCFG, buffer);
     if(rv < 0)  return rv;
 
     /* Fill in values from it */
+    out->time = ((uint32_t)sc->time_high << 16) | sc->time_low;
     out->language = sc->lang;
-    out->audio = sc->mono == 1 ? 0 : 1;
-    out->autostart = sc->autostart == 1 ? 0 : 1;
+    out->audio = !sc->mono;
+    out->autostart = !sc->autostart;
 
     return FLASHROM_ERR_NONE;
 }
 
 int flashrom_get_region(void) {
-    int start, size;
+    uint32_t start, size;
     char region[6] = { 0 };
 
     /* Find the partition */

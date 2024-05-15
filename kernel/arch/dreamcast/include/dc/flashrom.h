@@ -109,7 +109,7 @@ __BEGIN_DECLS
     \retval 0               On success.
     \retval -1              On error.
 */
-int flashrom_info(uint32_t part_id, int *start_out, int *size_out);
+int flashrom_info(uint32_t part_id, uint32_t *start_out, uint32_t *size_out);
 
 /** \brief   Read data from the flashrom.
     \ingroup flashrom
@@ -205,6 +205,7 @@ int flashrom_get_block(uint32_t part_id, uint32_t block_id, uint8_t *buffer_out)
     \headerfile dc/flashrom.h
 */
 typedef struct flashrom_syscfg {
+    uint32_t time;       /**< \brief Secs since 1/1/1950 00:00 */
     uint32_t language;   /**< \brief Language setting.
                               \see fr_langs */
     uint32_t audio;      /**< \brief Stereo/mono setting. 0 == mono, 1 == stereo */
