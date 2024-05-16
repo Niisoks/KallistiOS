@@ -9,26 +9,39 @@
 /** \file   dc/flashrom.h
     \brief  Dreamcast flashrom read/write support.
 
-    This file implements wrappers for the BIOS flashrom syscalls, and some
-    utilities to make it easier to use the flashrom info. Note that because the
-    flash writing can be such a dangerous thing potentially (I haven't deleted
-    my flash to see what happens, but given the info stored here it sounds like
-    a Bad Idea(tm)), extreme care should be taken if you choose to use these
-    functions!
+    This file provides wrappers for the BIOS flashrom syscalls and utilities to
+    facilitate the use of flashrom data. Since writing to the flashrom can be
+    risky and potentially destructive, extreme caution is advised when using
+    these functions.
+
+    The Dreamcast flashrom stores important system data including user settings,
+    ISP configurations, and game-specific settings. This file contains functions
+    to read, write, and manage this data.
+
+    Writing to the flashrom should be done with caution:
+    - Always back up existing data before making changes.
+    - Verify the data you are writing is correct.
+    - Avoid frequent writes to minimize wear on the flashrom memory cells.
+
+    Flashrom Structure
+
+    The flashrom is divided into several partitions and logical blocks:
+    - **Partitions**: Defined sections of the flashrom used for different types of data.
+    - **Logical Blocks**: Subsections within partitions that store specific settings.
 
     \author Megan Potter
     \author Lawrence Sebald
 */
 
-#ifndef __DC_FLASHROM_H
-#define __DC_FLASHROM_H
+#ifndef __DC_flashrom_H
+#define __DC_flashrom_H
 
 #include <sys/cdefs.h>
 __BEGIN_DECLS
 
 #include <arch/types.h>
 
-/** \defgroup flashrom  Flashrom
+/** \defgroup flashrom  flashrom
     \brief              Driver for the Dreamcast's Internal Flash Storage
     \ingroup            vfs
 */
@@ -38,11 +51,11 @@ __BEGIN_DECLS
     \ingroup            flashrom
     @{
 */
-#define FLASHROM_PT_SYSTEM      0   /**< \brief Factory settings (read-only, 8K) */
-#define FLASHROM_PT_RESERVED    1   /**< \brief reserved (all 0s, 8K) */
-#define FLASHROM_PT_BLOCK_1     2   /**< \brief Block allocated (16K) */
-#define FLASHROM_PT_SETTINGS    3   /**< \brief Game settings (block allocated, 32K) */
-#define FLASHROM_PT_BLOCK_2     4   /**< \brief Block allocated (64K) */
+#define flashrom_PT_SYSTEM      0   /**< \brief Factory settings (read-only, 8K) */
+#define flashrom_PT_RESERVED    1   /**< \brief reserved (all 0s, 8K) */
+#define flashrom_PT_BLOCK_1     2   /**< \brief Block allocated (16K) */
+#define flashrom_PT_SETTINGS    3   /**< \brief Game settings (block allocated, 32K) */
+#define flashrom_PT_BLOCK_2     4   /**< \brief Block allocated (64K) */
 /** @} */
 
 
@@ -51,55 +64,55 @@ __BEGIN_DECLS
     \ingroup            flashrom
     @{
 */
-#define FLASHROM_B1_SYSCFG          0x05    /**< \brief System config (BLOCK_1) */
-#define FLASHROM_B1_PW_SETTINGS_1   0x80    /**< \brief PlanetWeb settings (BLOCK_1) */
-#define FLASHROM_B1_PW_SETTINGS_2   0x81    /**< \brief PlanetWeb settings (BLOCK_1) */
-#define FLASHROM_B1_PW_SETTINGS_3   0x82    /**< \brief PlanetWeb settings (BLOCK_1) */
-#define FLASHROM_B1_PW_SETTINGS_4   0x83    /**< \brief PlanetWeb settings (BLOCK_1) */
-#define FLASHROM_B1_PW_SETTINGS_5   0x84    /**< \brief PlanetWeb settings (BLOCK_1) */
-#define FLASHROM_B1_PW_PPP1         0xC0    /**< \brief PlanetWeb PPP settings (BLOCK_1) */
-#define FLASHROM_B1_PW_PPP2         0xC1    /**< \brief PlanetWeb PPP settings (BLOCK_1) */
-#define FLASHROM_B1_PW_DNS          0xC2    /**< \brief PlanetWeb DNS settings (BLOCK_1) */
-#define FLASHROM_B1_PW_EMAIL1       0xC3    /**< \brief PlanetWeb Email settings (BLOCK_1) */
-#define FLASHROM_B1_PW_EMAIL2       0xC4    /**< \brief PlanetWeb Email settings (BLOCK_1) */
-#define FLASHROM_B1_PW_EMAIL_PROXY  0xC5    /**< \brief PlanetWeb Email/Proxy settings (BLOCK_1) */
-#define FLASHROM_B1_DK_PPP1         0xC6    /**< \brief DreamKey PPP settings (also seen in PW) */
-#define FLASHROM_B1_DK_PPP2         0xC7    /**< \brief DreamKey PPP settings (also seen in PW) */
-#define FLASHROM_B1_DK_DNS          0xC8    /**< \brief DreamKey PPP settings (also seen in PW) */
-#define FLASHROM_B1_IP_SETTINGS     0xE0    /**< \brief IP settings for BBA (BLOCK_1) */
-#define FLASHROM_B1_EMAIL           0xE2    /**< \brief Email address (BLOCK_1) */
-#define FLASHROM_B1_SMTP            0xE4    /**< \brief SMTP server setting (BLOCK_1) */
-#define FLASHROM_B1_POP3            0xE5    /**< \brief POP3 server setting (BLOCK_1) */
-#define FLASHROM_B1_POP3LOGIN       0xE6    /**< \brief POP3 login setting (BLOCK_1) */
-#define FLASHROM_B1_POP3PASSWD      0xE7    /**< \brief POP3 password setting + proxy (BLOCK_1) */
-#define FLASHROM_B1_PPPLOGIN        0xE8    /**< \brief PPP username + proxy (BLOCK_1) */
-#define FLASHROM_B1_PPPPASSWD       0xE9    /**< \brief PPP passwd (BLOCK_1) */
-#define FLASHROM_B1_PPPMODEM        0xEB    /**< \brief PPP modem settings */
+#define flashrom_B1_SYSCFG          0x05    /**< \brief System config (BLOCK_1) */
+#define flashrom_B1_PW_SETTINGS_1   0x80    /**< \brief PlanetWeb settings (BLOCK_1) */
+#define flashrom_B1_PW_SETTINGS_2   0x81    /**< \brief PlanetWeb settings (BLOCK_1) */
+#define flashrom_B1_PW_SETTINGS_3   0x82    /**< \brief PlanetWeb settings (BLOCK_1) */
+#define flashrom_B1_PW_SETTINGS_4   0x83    /**< \brief PlanetWeb settings (BLOCK_1) */
+#define flashrom_B1_PW_SETTINGS_5   0x84    /**< \brief PlanetWeb settings (BLOCK_1) */
+#define flashrom_B1_PW_PPP1         0xC0    /**< \brief PlanetWeb PPP settings (BLOCK_1) */
+#define flashrom_B1_PW_PPP2         0xC1    /**< \brief PlanetWeb PPP settings (BLOCK_1) */
+#define flashrom_B1_PW_DNS          0xC2    /**< \brief PlanetWeb DNS settings (BLOCK_1) */
+#define flashrom_B1_PW_EMAIL1       0xC3    /**< \brief PlanetWeb Email settings (BLOCK_1) */
+#define flashrom_B1_PW_EMAIL2       0xC4    /**< \brief PlanetWeb Email settings (BLOCK_1) */
+#define flashrom_B1_PW_EMAIL_PROXY  0xC5    /**< \brief PlanetWeb Email/Proxy settings (BLOCK_1) */
+#define flashrom_B1_DK_PPP1         0xC6    /**< \brief DreamKey PPP settings (also seen in PW) */
+#define flashrom_B1_DK_PPP2         0xC7    /**< \brief DreamKey PPP settings (also seen in PW) */
+#define flashrom_B1_DK_DNS          0xC8    /**< \brief DreamKey PPP settings (also seen in PW) */
+#define flashrom_B1_IP_SETTINGS     0xE0    /**< \brief IP settings for BBA (BLOCK_1) */
+#define flashrom_B1_EMAIL           0xE2    /**< \brief Email address (BLOCK_1) */
+#define flashrom_B1_SMTP            0xE4    /**< \brief SMTP server setting (BLOCK_1) */
+#define flashrom_B1_POP3            0xE5    /**< \brief POP3 server setting (BLOCK_1) */
+#define flashrom_B1_POP3LOGIN       0xE6    /**< \brief POP3 login setting (BLOCK_1) */
+#define flashrom_B1_POP3PASSWD      0xE7    /**< \brief POP3 password setting + proxy (BLOCK_1) */
+#define flashrom_B1_PPPLOGIN        0xE8    /**< \brief PPP username + proxy (BLOCK_1) */
+#define flashrom_B1_PPPPASSWD       0xE9    /**< \brief PPP passwd (BLOCK_1) */
+#define flashrom_B1_PPPMODEM        0xEB    /**< \brief PPP modem settings */
 /** @} */
 
-#define FLASHROM_OFFSET_CRC         62      /**< \brief Location of CRC in each block */
+#define flashrom_OFFSET_CRC         62      /**< \brief Location of CRC in each block */
 
 /** \defgroup fr_errs   Error Values
     \brief              Error values for the flashrom_get_block() function
     \ingroup            flashrom
     @{
 */
-#define FLASHROM_ERR_NONE           0       /**< \brief Success */
-#define FLASHROM_ERR_NOT_FOUND      -1      /**< \brief Block not found */
-#define FLASHROM_ERR_NO_PARTITION   -2      /**< \brief Partition not found */
-#define FLASHROM_ERR_READ_PART      -3      /**< \brief Error reading partition */
-#define FLASHROM_ERR_BAD_MAGIC      -4      /**< \brief Invalid block magic */
-#define FLASHROM_ERR_BOGUS_PART     -5      /**< \brief Bogus partition size */
-#define FLASHROM_ERR_NOMEM          -6      /**< \brief Memory allocation failure */
-#define FLASHROM_ERR_READ_BITMAP    -7      /**< \brief Error reading bitmap */
-#define FLASHROM_ERR_EMPTY_PART     -8      /**< \brief Empty partition */
-#define FLASHROM_ERR_READ_BLOCK     -9      /**< \brief Error reading block */
+#define flashrom_ERR_NONE           0       /**< \brief Success */
+#define flashrom_ERR_NOT_FOUND      -1      /**< \brief Block not found */
+#define flashrom_ERR_NO_PARTITION   -2      /**< \brief Partition not found */
+#define flashrom_ERR_READ_PART      -3      /**< \brief Error reading partition */
+#define flashrom_ERR_BAD_MAGIC      -4      /**< \brief Invalid block magic */
+#define flashrom_ERR_BOGUS_PART     -5      /**< \brief Bogus partition size */
+#define flashrom_ERR_NOMEM          -6      /**< \brief Memory allocation failure */
+#define flashrom_ERR_READ_BITMAP    -7      /**< \brief Error reading bitmap */
+#define flashrom_ERR_EMPTY_PART     -8      /**< \brief Empty partition */
+#define flashrom_ERR_READ_BLOCK     -9      /**< \brief Error reading block */
 /** @} */
 
 /** \brief   Retrieve information about the given partition.
     \ingroup flashrom
 
-    This function implements the FLASHROM_INFO syscall; given a partition ID,
+    This function implements the flashrom_INFO syscall; given a partition ID,
     return two ints specifying the beginning and the size of the partition
     (respectively) inside the flashrom.
 
@@ -114,7 +127,7 @@ int flashrom_info(uint32_t part_id, uint32_t *start_out, uint32_t *size_out);
 /** \brief   Read data from the flashrom.
     \ingroup flashrom
 
-    This function implements the FLASHROM_READ syscall; given a flashrom offset,
+    This function implements the flashrom_READ syscall; given a flashrom offset,
     an output buffer, and a count, this reads data from the flashrom.
 
     \param  offset          The offset to read from.
@@ -128,7 +141,7 @@ int flashrom_read(uint32_t offset, void *buffer_out, size_t bytes);
 /** \brief   Write data to the flashrom.
     \ingroup flashrom
 
-    This function implements the FLASHROM_WRITE syscall; given a flashrom
+    This function implements the flashrom_WRITE syscall; given a flashrom
     offset, an input buffer, and a count, this writes data to the flashrom.
 
     \note It is not possible to write ones to the flashrom over zeros. If you
@@ -146,7 +159,7 @@ int flashrom_write(uint32_t offset, const void *buffer, size_t bytes);
 /** \brief   Delete data from the flashrom.
     \ingroup flashrom
 
-    This function implements the FLASHROM_DELETE syscall; given a partition
+    This function implements the flashrom_DELETE syscall; given a partition
     offset, that entire partition of the flashrom will be deleted and all data
     will be reset to 0xFF bytes.
 
@@ -188,12 +201,12 @@ int flashrom_get_block(uint32_t part_id, uint32_t block_id, uint8_t *buffer_out)
 
     @{
 */
-#define FLASHROM_LANG_JAPANESE  0   /**< \brief Japanese language code */
-#define FLASHROM_LANG_ENGLISH   1   /**< \brief English language code */
-#define FLASHROM_LANG_GERMAN    2   /**< \brief German language code */
-#define FLASHROM_LANG_FRENCH    3   /**< \brief French language code */
-#define FLASHROM_LANG_SPANISH   4   /**< \brief Spanish language code */
-#define FLASHROM_LANG_ITALIAN   5   /**< \brief Italian language code */
+#define flashrom_LANG_JAPANESE  0   /**< \brief Japanese language code */
+#define flashrom_LANG_ENGLISH   1   /**< \brief English language code */
+#define flashrom_LANG_GERMAN    2   /**< \brief German language code */
+#define flashrom_LANG_FRENCH    3   /**< \brief French language code */
+#define flashrom_LANG_SPANISH   4   /**< \brief Spanish language code */
+#define flashrom_LANG_ITALIAN   5   /**< \brief Italian language code */
 /** @} */
 
 /** \brief   System configuration structure.
@@ -230,10 +243,10 @@ int flashrom_get_syscfg(flashrom_syscfg_t *out);
 
     @{
 */
-#define FLASHROM_REGION_UNKNOWN 0   /**< \brief Unknown region */
-#define FLASHROM_REGION_JAPAN   1   /**< \brief Japanese region */
-#define FLASHROM_REGION_US      2   /**< \brief US/Canada region */
-#define FLASHROM_REGION_EUROPE  3   /**< \brief European region */
+#define flashrom_REGION_UNKNOWN 0   /**< \brief Unknown region */
+#define flashrom_REGION_JAPAN   1   /**< \brief Japanese region */
+#define flashrom_REGION_US      2   /**< \brief US/Canada region */
+#define flashrom_REGION_EUROPE  3   /**< \brief European region */
 /** @} */
 
 /** \brief   Retrieve the console's region code.
@@ -257,10 +270,10 @@ int flashrom_get_region(void);
 
     @{
 */
-#define FLASHROM_ISP_DIALUP 0   /**< \brief Dialup ISP */
-#define FLASHROM_ISP_DHCP   1   /**< \brief DHCP-based ethernet */
-#define FLASHROM_ISP_PPPOE  2   /**< \brief PPPoE-based ethernet */
-#define FLASHROM_ISP_STATIC 3   /**< \brief Static IP-based ethernet */
+#define flashrom_ISP_DIALUP 0   /**< \brief Dialup ISP */
+#define flashrom_ISP_DHCP   1   /**< \brief DHCP-based ethernet */
+#define flashrom_ISP_PPPOE  2   /**< \brief PPPoE-based ethernet */
+#define flashrom_ISP_STATIC 3   /**< \brief Static IP-based ethernet */
 /** @} */
 
 /** \defgroup fr_fields ISP Config Fields
@@ -273,29 +286,29 @@ int flashrom_get_region(void);
 
     @{
 */
-#define FLASHROM_ISP_IP         (1 <<  0)   /**< \brief Static IP address */
-#define FLASHROM_ISP_NETMASK    (1 <<  1)   /**< \brief Netmask */
-#define FLASHROM_ISP_BROADCAST  (1 <<  2)   /**< \brief Broadcast address */
-#define FLASHROM_ISP_GATEWAY    (1 <<  3)   /**< \brief Gateway address */
-#define FLASHROM_ISP_DNS        (1 <<  4)   /**< \brief DNS servers */
-#define FLASHROM_ISP_HOSTNAME   (1 <<  5)   /**< \brief Hostname */
-#define FLASHROM_ISP_EMAIL      (1 <<  6)   /**< \brief Email address */
-#define FLASHROM_ISP_SMTP       (1 <<  7)   /**< \brief SMTP server */
-#define FLASHROM_ISP_POP3       (1 <<  8)   /**< \brief POP3 server */
-#define FLASHROM_ISP_POP3_USER  (1 <<  9)   /**< \brief POP3 username */
-#define FLASHROM_ISP_POP3_PASS  (1 << 10)   /**< \brief POP3 password */
-#define FLASHROM_ISP_PROXY_HOST (1 << 11)   /**< \brief Proxy hostname */
-#define FLASHROM_ISP_PROXY_PORT (1 << 12)   /**< \brief Proxy port */
-#define FLASHROM_ISP_PPP_USER   (1 << 13)   /**< \brief PPP username */
-#define FLASHROM_ISP_PPP_PASS   (1 << 14)   /**< \brief PPP password */
-#define FLASHROM_ISP_OUT_PREFIX (1 << 15)   /**< \brief Outside dial prefix */
-#define FLASHROM_ISP_CW_PREFIX  (1 << 16)   /**< \brief Call waiting prefix */
-#define FLASHROM_ISP_REAL_NAME  (1 << 17)   /**< \brief Real name */
-#define FLASHROM_ISP_MODEM_INIT (1 << 18)   /**< \brief Modem init string */
-#define FLASHROM_ISP_AREA_CODE  (1 << 19)   /**< \brief Area code */
-#define FLASHROM_ISP_LD_PREFIX  (1 << 20)   /**< \brief Long distance prefix */
-#define FLASHROM_ISP_PHONE1     (1 << 21)   /**< \brief Phone number 1 */
-#define FLASHROM_ISP_PHONE2     (1 << 22)   /**< \brief Phone number 2 */
+#define flashrom_ISP_IP         (1 <<  0)   /**< \brief Static IP address */
+#define flashrom_ISP_NETMASK    (1 <<  1)   /**< \brief Netmask */
+#define flashrom_ISP_BROADCAST  (1 <<  2)   /**< \brief Broadcast address */
+#define flashrom_ISP_GATEWAY    (1 <<  3)   /**< \brief Gateway address */
+#define flashrom_ISP_DNS        (1 <<  4)   /**< \brief DNS servers */
+#define flashrom_ISP_HOSTNAME   (1 <<  5)   /**< \brief Hostname */
+#define flashrom_ISP_EMAIL      (1 <<  6)   /**< \brief Email address */
+#define flashrom_ISP_SMTP       (1 <<  7)   /**< \brief SMTP server */
+#define flashrom_ISP_POP3       (1 <<  8)   /**< \brief POP3 server */
+#define flashrom_ISP_POP3_USER  (1 <<  9)   /**< \brief POP3 username */
+#define flashrom_ISP_POP3_PASS  (1 << 10)   /**< \brief POP3 password */
+#define flashrom_ISP_PROXY_HOST (1 << 11)   /**< \brief Proxy hostname */
+#define flashrom_ISP_PROXY_PORT (1 << 12)   /**< \brief Proxy port */
+#define flashrom_ISP_PPP_USER   (1 << 13)   /**< \brief PPP username */
+#define flashrom_ISP_PPP_PASS   (1 << 14)   /**< \brief PPP password */
+#define flashrom_ISP_OUT_PREFIX (1 << 15)   /**< \brief Outside dial prefix */
+#define flashrom_ISP_CW_PREFIX  (1 << 16)   /**< \brief Call waiting prefix */
+#define flashrom_ISP_REAL_NAME  (1 << 17)   /**< \brief Real name */
+#define flashrom_ISP_MODEM_INIT (1 << 18)   /**< \brief Modem init string */
+#define flashrom_ISP_AREA_CODE  (1 << 19)   /**< \brief Area code */
+#define flashrom_ISP_LD_PREFIX  (1 << 20)   /**< \brief Long distance prefix */
+#define flashrom_ISP_PHONE1     (1 << 21)   /**< \brief Phone number 1 */
+#define flashrom_ISP_PHONE2     (1 << 22)   /**< \brief Phone number 2 */
 /** @} */
 
 /** \defgroup fr_flags  ISP Config Flags
@@ -307,10 +320,10 @@ int flashrom_get_region(void);
 
     @{
 */
-#define FLASHROM_ISP_DIAL_AREACODE  (1 <<  0)   /**< \brief Dial area code before number */
-#define FLASHROM_ISP_USE_PROXY      (1 <<  1)   /**< \brief Proxy enabled */
-#define FLASHROM_ISP_PULSE_DIAL     (1 <<  2)   /**< \brief Pulse dialing (instead of tone) */
-#define FLASHROM_ISP_BLIND_DIAL     (1 <<  3)   /**< \brief Blind dial (don't wait for tone) */
+#define flashrom_ISP_DIAL_AREACODE  (1 <<  0)   /**< \brief Dial area code before number */
+#define flashrom_ISP_USE_PROXY      (1 <<  1)   /**< \brief Proxy enabled */
+#define flashrom_ISP_PULSE_DIAL     (1 <<  2)   /**< \brief Pulse dialing (instead of tone) */
+#define flashrom_ISP_BLIND_DIAL     (1 <<  3)   /**< \brief Blind dial (don't wait for tone) */
 /** @} */
 
 /** \brief   ISP configuration structure.
@@ -388,4 +401,4 @@ int flashrom_get_pw_ispcfg(flashrom_ispcfg_t *out);
 
 __END_DECLS
 
-#endif  /* __DC_FLASHROM_H */
+#endif  /* __DC_flashrom_H */

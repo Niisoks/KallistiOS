@@ -28,6 +28,7 @@ void print_date_from_seconds(uint32_t seconds) {
 }
 
 int main(int argc, char *argv[]) {
+    int part_id;
     uint32_t  start, size;
 
     flashrom_syscfg_t sys_cfg;
@@ -40,13 +41,15 @@ int main(int argc, char *argv[]) {
     printf("Time: %ld, Language: %ld Stereo: %ld AutoStart: %ld\n", sys_cfg.time, sys_cfg.language, sys_cfg.audio, sys_cfg.autostart);
     print_date_from_seconds(sys_cfg.time);
 
-// #define FLASHROM_PT_SYSTEM      0   /**< \brief Factory settings (read-only, 8K) */
-// #define FLASHROM_PT_RESERVED    1   /**< \brief reserved (all 0s, 8K) */
-// #define FLASHROM_PT_BLOCK_1     2   /**< \brief Block allocated (16K) */
-// #define FLASHROM_PT_SETTINGS    3   /**< \brief Game settings (block allocated, 32K) */
-// #define FLASHROM_PT_BLOCK_2     4   /**< \brief Block allocated (64K) */
+    printf("Iterating through all five flashrom partitions and output their start offset into the flashrom and size of the partition\n\n");
 
-    flashrom_info(FLASHROM_PT_SYSTEM,  &start, &size);
+    printf("%-12s %-9s %-17s\n", "Partition", "Offset", "Size of Partition");
+    printf("%-12s %-9s %-17s\n", "---------", "------", "-----------------");
+
+    for(part_id = FLASHROM_PT_SYSTEM; part_id <= FLASHROM_PT_BLOCK_2; part_id++) {
+        flashrom_info(part_id, &start, &size);
+        printf("%9d %9ld %20ld\n", part_id, start, size);
+    }
 
     return 0;
 }
