@@ -121,6 +121,13 @@ memchk_done:
 	jsr	@r0
 	shll16	r4
 
+	! Initialize gprof profiling
+	mov.l  monstartup_addr, r0
+    mov.l  start_low, r4       ! Start of text segment
+    mov.l  end_high, r5        ! End of text segment
+    jsr    @r0
+    nop
+
 	! Setup a sentinel value for frame pointer in case we're using
 	! FRAME_POINTERS for stack tracing.
 	mov	#-1,r14
@@ -135,6 +142,11 @@ memchk_done:
 _arch_real_exit:
 	! Save exit code parameter to r8
 	mov r4, r8
+
+	! Cleanup gprof profiling
+	mov.l	mcleanup_addr, r0
+	jsr	@r0
+	nop
 
 	! Reset SR
 	mov.l	old_sr,r0
@@ -232,6 +244,17 @@ fpscr_addr:
 	.long	___set_fpscr	! in libgcc
 kos_init_flags_addr:
 	.long	___kos_init_flags
+
+! GPROF functions
+monstartup_addr:
+	.long	__monstartup
+mcleanup_addr:
+	.long	__mcleanup
+start_low:
+	.long _start			! Address of the start of the text section
+end_high:
+	.long __etext			! Address just after the end of the text section
+
 ccr_addr:
 	.long	0xff00001c
 ccr_data:
