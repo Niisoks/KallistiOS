@@ -24,7 +24,7 @@ $(TARGET): $(OBJS)
 # For Mac, Linux, Ubuntu sudo is required with the -c "." command to save data to the PC
 #    sudo $(KOS_LOADER) $(TARGET) -c "."
 run: $(TARGET)
-	$(KOS_LOADER) $(TARGET) -c "."
+	sudo $(KOS_LOADER) $(TARGET) -c "."
 
 dist: $(TARGET)
 	-rm -f $(OBJS)

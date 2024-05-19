@@ -30,7 +30,7 @@
 
 #include <kos/thread.h>
 
-#define SHOW_BLACK_BG 1
+#define SHOW_BLACK_BG true
 
 /* Keeps track of the amount of screenshots you have taken */
 static int counter = 0;
@@ -82,12 +82,10 @@ int main(int argc, char **argv) {
         vid_clear(r, g, b);
 
         /* Draw Foreground */
-        font_height_offset = (640 * (480 - (BFONT_HEIGHT * 6))) + (BFONT_THIN_WIDTH * 2);
-        bfont_draw_str(vram_s + font_height_offset, 640, SHOW_BLACK_BG, 
-            "Press Start to exit");
+        bfont_draw_str_vram(100, 240, SHOW_BLACK_BG, 
+            "Press Start to exit\nTesting New\tlines\nMultiple");
             
-        font_height_offset += 640 * BFONT_HEIGHT * 2;
-        bfont_draw_str(vram_s + font_height_offset, 640, SHOW_BLACK_BG, 
+        bfont_draw_str_vram(10, 48, SHOW_BLACK_BG, 
             "Press A to take a screen shot");
 
         /* Without this the bfont wont show on the screen */

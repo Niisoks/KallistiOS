@@ -13,6 +13,7 @@
 #include <string.h>
 #include <stdio.h>
 
+#include <dc/video.h>
 #include <dc/biosfont.h>
 #include <dc/syscalls.h>
 
@@ -145,7 +146,7 @@ uint8_t *bfont_find_char(uint32_t ch) {
 
 /* JIS -> (kuten) -> address conversion */
 uint8_t *bfont_find_char_jp(uint32_t ch) {
-    uint8_t   *fa = syscall_font_address();
+    uint8_t  *fa = syscall_font_address();
     uint32_t ku, ten, kuten = 0;
 
     /* Do the requested code conversion */
@@ -310,52 +311,73 @@ size_t bfont_draw_wide(void *b, uint32_t bufwidth, bool opaque, uint32_t c) {
 void bfont_draw_str_ex_va(void *b, uint32_t width, uint32_t fg, uint32_t bg, uint8_t bpp, bool opaque, 
                           const char *fmt, va_list *var_args) {
     char string[1024 * 4];
-    uint16_t nChr, nMask, nFlag;
+    uint16_t nChr, nMask;
     uint8_t *buffer = (uint8_t *)b;
+    bool wideChr;
     char *str = string;
+    /* For handling new lines */
+    uint32_t line_start = 0;
 
     vsnprintf(string, sizeof(string), fmt, *var_args);
 
     while(*str) {
-        nFlag = 0;
+        wideChr = false;
         nChr = *str & 0xff;
 
+        if(nChr == '\n') {
+            /* Move to the beginning of the next line */
+            buffer = (uint8_t *)b + line_start + (width * BFONT_HEIGHT * (bpp / 8));
+            line_start = buffer - (uint8_t *)b;
+            str++;
+            continue;
+        }
+        else if(nChr == '\t') {
+            /* Draw four spaces on the current line */
+            nChr = bfont_code_mode == BFONT_CODE_ISO8859_1 ? 0x20 : 0xa0;
+            buffer += bfont_draw_ex(buffer, width, fg, bg, bpp, opaque, nChr, false, false);
+            buffer += bfont_draw_ex(buffer, width, fg, bg, bpp, opaque, nChr, false, false);
+            buffer += bfont_draw_ex(buffer, width, fg, bg, bpp, opaque, nChr, false, false);
+            buffer += bfont_draw_ex(buffer, width, fg, bg, bpp, opaque, nChr, false, false);
+            str++;
+            continue;
+        }
+
+        /* Non-western, non-ASCII character */
         if(bfont_code_mode != BFONT_CODE_ISO8859_1 && (nChr & 0x80)) {
             switch(bfont_code_mode) {
                 case BFONT_CODE_EUC:
-
+                    /* Check if the character is the 'SS2' character in EUC-JP */
                     if(nChr == 0x8e) {
                         str++;
                         nChr = *str & 0xff;
 
+                        /* Is a valid half-width katakana character? */
                         if((nChr < 0xa1) || (nChr > 0xdf))
-                            nChr = 0xa0;    /* Blank Space */
+                            nChr = 0xa0;    /* Nope, output blank space */
+                    } else {
+                        wideChr = true;
                     }
-                    else
-                        nFlag = 1;
-
                     break;
                 case BFONT_CODE_SJIS:
                     nMask = nChr & 0xf0;
-
+                    /* Check if the character is part of the valid Shift ranges */
                     if((nMask == 0x80) || (nMask == 0x90) || (nMask == 0xe0))
-                        nFlag = 1;
-
+                        wideChr = true;
                     break;
                 default:
                     assert_msg(0, "Unknown bfont encoding mode");
             }
 
-            if(nFlag == 1) {
+            if(wideChr) { /* Draw the wide character */
                 str++;
                 nChr = (nChr << 8) | (*str & 0xff);
-                buffer += bfont_draw_ex(buffer, width, fg, bg, bpp, opaque, nChr, 1, 0);
+                buffer += bfont_draw_ex(buffer, width, fg, bg, bpp, opaque, nChr, true, false);
+            } else { /* Draw the half-width kana character */
+                buffer += bfont_draw_ex(buffer, width, fg, bg, bpp, opaque, nChr, false, true);
             }
-            else
-                buffer += bfont_draw_ex(buffer, width, fg, bg, bpp, opaque, nChr, 0, 1);
+        } else {
+            buffer += bfont_draw_ex(buffer, width, fg, bg, bpp, opaque, nChr, false, false);
         }
-        else
-            buffer += bfont_draw_ex(buffer, width, fg, bg, bpp, opaque, nChr, 0, 0);
 
         str++;
     }
@@ -384,6 +406,36 @@ void bfont_draw_str(void *b, uint32_t width, bool opaque, const char *fmt, ...) 
     bfont_draw_str_ex_va(b, width, bfont_fgcolor, bfont_bgcolor, 
                         (bfont_32bit ? (sizeof (uint32_t)) : (sizeof (uint16_t))) << 3, 
                         opaque, fmt, &var_args);
+
+    va_end(var_args);
+}
+
+void bfont_draw_str_vram_ex(uint32_t x, uint32_t y, uint32_t fg_color, uint32_t bg_color, bool opaque, 
+                            const char *fmt,va_list *var_args) {
+    uint32_t bpp = 16;
+    void *vram = vram_s;
+
+    if(vid_mode->pm == PM_RGB0888) {
+        bpp = 32;
+        vram = vram_l;
+    }
+    
+    if (bpp == 16) {
+        vram = (uint16_t *)vram + (y * vid_mode->width + x);
+    } else {
+        vram = (uint32_t *)vram + (y * vid_mode->width + x);
+    }
+
+    bfont_draw_str_ex_va(vram, vid_mode->width, fg_color, bg_color, 
+                        bpp, opaque, fmt, &var_args);
+
+}
+
+void bfont_draw_str_vram(uint32_t x, uint32_t y, bool opaque, const char *fmt, ...) {
+    va_list var_args;
+    va_start(var_args, fmt);
+    
+    bfont_draw_str_vram_coord_ex(x, y, bfont_fgcolor, bfont_bgcolor, opaque, fmt, var_args);
 
     va_end(var_args);
 }

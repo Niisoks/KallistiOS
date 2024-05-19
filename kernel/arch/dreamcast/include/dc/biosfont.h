@@ -64,7 +64,7 @@ __BEGIN_DECLS
 /* JISX-0208 Rows 1-7 and 16-84 are encoded between BFONT_WIDE_START and BFONT_DREAMCAST_SPECIFIC.
     Only the box-drawing characters (row 8) are missing. */
 /** \brief Size of a row for JISX-0208 characters */
-#define JISX_0208_ROW_SIZE  94
+#define JISX_0208_ROW_SIZE          94
 /** \brief Start of Wide Characters in Font Block */
 #define BFONT_WIDE_START            (288 * BFONT_THIN_WIDTH * BFONT_HEIGHT / 8)
 /** \brief Start of JISX-0208 Rows 1-7 in Font Block */   
@@ -381,16 +381,16 @@ uint8_t *bfont_find_icon(bfont_vmu_icon_t icon);
     exposing the colors and bitdepths desired. This will allow the writing
     of bfont characters to paletted textures.
 
-    \param buffer       The buffer to draw to.
-    \param bufwidth     The width of the buffer in pixels.
-    \param fg           The foreground color to use.
-    \param bg           The background color to use.
-    \param bpp          The number of bits per pixel in the buffer.
-    \param opaque       If non-zero, overwrite background areas with black,
+    \param  buffer       The buffer to draw to.
+    \param  bufwidth     The width of the buffer in pixels.
+    \param  fg           The foreground color to use.
+    \param  bg           The background color to use.
+    \param  bpp          The number of bits per pixel in the buffer.
+    \param  opaque       If non-zero, overwrite background areas with black,
                             otherwise do not change them from what they are.
-    \param c            The character to draw.
-    \param wide         Draw a wide character.
-    \param iskana       Draw a half-width kana character.
+    \param  c            The character to draw.
+    \param  wide         Draw a wide character.
+    \param  iskana       Draw a half-width kana character.
     \return             Amount of width covered in bytes.
 */
 size_t bfont_draw_ex(void *buffer, uint32_t bufwidth, uint32_t fg,
@@ -458,15 +458,15 @@ size_t bfont_draw_wide(void *buffer, uint32_t bufwidth, bool opaque,
     if the encoding is set to one of the Japanese encodings. Colors and bitdepth
     can be set.
 
-    \param b                The buffer to draw to.
-    \param width            The width of the buffer in pixels.
-    \param fg               The foreground color to use.
-    \param bg               The background color to use.
-    \param bpp              The number of bits per pixel in the buffer.
-    \param opaque           If non-zero, overwrite background areas with black,
+    \param  b               The buffer to draw to.
+    \param  width           The width of the buffer in pixels.
+    \param  fg              The foreground color to use.
+    \param  bg              The background color to use.
+    \param  bpp             The number of bits per pixel in the buffer.
+    \param  opaque          If non-zero, overwrite background areas with black,
                             otherwise do not change them from what they are.
-    \param fmt              The printf-style format string to draw.
-    \param ...              Additional printf-style variadic arguments
+    \param  fmt             The printf-style format string to draw.
+    \param  ...             Additional printf-style variadic arguments
 
     \sa bfont_draw_str_ex_va()
 */
@@ -478,15 +478,15 @@ void bfont_draw_str_ex(void *b, uint32_t width, uint32_t fg, uint32_t bg, uint8_
     This function is equivalnet to bfont_draw_str_ex(), except that the variadic
     argument list is passed via a pointer to a va_list.
 
-    \param b                The buffer to draw to.
-    \param width            The width of the buffer in pixels.
-    \param fg               The foreground color to use.
-    \param bg               The background color to use.
-    \param bpp              The number of bits per pixel in the buffer.
-    \param opaque           If non-zero, overwrite background areas with black,
+    \param  b               The buffer to draw to.
+    \param  width           The width of the buffer in pixels.
+    \param  fg              The foreground color to use.
+    \param  bg              The background color to use.
+    \param  bpp             The number of bits per pixel in the buffer.
+    \param  opaque          If non-zero, overwrite background areas with black,
                             otherwise do not change them from what they are.
-    \param fmt              The printf-style format string to draw.
-    \param ...              Additional printf-style variadic arguments
+    \param  fmt             The printf-style format string to draw.
+    \param  var_args        Additional printf-style variadic arguments
 
     \sa bfont_draw_str_ex()
 */
@@ -508,6 +508,42 @@ void bfont_draw_str_ex_va(void *b, uint32_t width, uint32_t fg, uint32_t bg, uin
     \param  ...             Additional printf-style variadic arguments.
 */
 void bfont_draw_str(void *b, uint32_t width, bool opaque, const char *fmt, ...)
+    __printflike(4, 5);
+
+/** \brief   Draw a full formatted string to video ram (with va_args).
+
+    This function is equivalnet to bfont_draw_str_ex(), except that the variadic
+    argument list is passed via a pointer to a va_list.
+
+    \param  x               The x position to start drawing at.
+    \param  y               The y position to start drawing at.
+    \param  fg              The foreground color to use.
+    \param  bg              The background color to use.
+    \param  opaque          If non-zero, overwrite background areas with black,
+                            otherwise do not change them from what they are.
+    \param  fmt             The printf-style format string to draw.
+    \param  var_args        Additional printf-style variadic arguments
+
+    \sa bfont_draw_str_ex()
+*/
+void bfont_draw_str_vram_ex_va(uint32_t x, uint32_t y, uint32_t fg, uint32_t bg, 
+                               bool opaque, const char *fmt, va_list *var_args);
+
+/** \brief   Draw a full string to video ram (vram).
+
+    This function draws a NUL-terminated string in the set encoding to video
+    ram. This will automatically handle mixed half and full-width characters
+    if the encoding is set to one of the Japanese encodings. Draws pre-set
+    16-bit colors.
+
+    \param  x               The x position to start drawing at.
+    \param  y               The y position to start drawing at.
+    \param  opaque          If one, overwrite blank areas with bfont_bgcolor,
+                            otherwise do not change them from what they are.
+    \param  fmt             The printf-style format string to draw.
+    \param  ...             Additional printf-style variadic arguments.
+*/
+void bfont_draw_str_vram(uint32_t x, uint32_t y, bool opaque, const char *fmt, ...)
     __printflike(4, 5);
 
 /** @} */
