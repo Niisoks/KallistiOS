@@ -1,3 +1,19 @@
+/* KallistiOS ##version##
+
+    gprof.c
+    Copyright (C) 2024 Andy Barajas
+
+    This file contains functions that provide a workaround to get gprof
+    working on our current setup without editing startup.s and dealing with
+    trapa instructions. This implementation uses `-finstrument-functions` 
+    instead of `-pg` and requires linking against `-lgprof`.
+
+    Note: This implementation requires the following compilation and linking flags:
+
+    CFLAGS = -g -finstrument-functions
+    LDFLAGS = -lgprof
+*/
+
 #include <stdint.h>
 
 /* Start and End address for .text portion of program */
@@ -5,7 +21,7 @@
 extern char _etext;
 
 /* Forward declarations for gprof related functions in libc/koslib/gmon.c */
-extern void _mcount(uintptr_t *frompc, uintptr_t *selfpc);
+extern void _mcount(uintptr_t frompc, uintptr_t selfpc);
 extern void __monstartup(uintptr_t lowpc, uintptr_t highpc);
 extern void _mcleanup(void);
 
@@ -24,7 +40,7 @@ void __attribute__ ((no_instrument_function, hot)) __cyg_profile_func_exit(void 
 
 /* Constructor function to initialize profiling. Executed before main() */
 void __attribute__ ((no_instrument_function, constructor)) main_constructor(void) {
-    __monstartup(BASE_ADDRESS, (uintptr_t) &_etext);
+    __monstartup(BASE_ADDRESS, (uintptr_t)&_etext);
 }
 
 /* Destructor function to clean up profiling. Executed after return from main() */

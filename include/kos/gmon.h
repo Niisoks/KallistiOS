@@ -6,8 +6,10 @@
 */
 
 /** \file    kos/gmon.h
-    \brief   Code to help you modify gprof behavior.
-    \ingroup debugging
+    \brief   GPROF support.
+    \ingroup debugging_gprof
+
+    This file contains utilities to be used with profiling using gprof.
 
     \author Andy Barajas
 */
@@ -20,17 +22,37 @@ __BEGIN_DECLS
 
 #include <stdbool.h>
 
-#define GMON_OUT_PREFIX "GMON_OUT_PREFIX"
+/** \defgroup debugging_gprof GPROF
+    \brief    Utilities for GPROF
+    \ingroup  debugging
 
-/** \addtogroup debugging
     @{
 */
 
-/** \brief  Enable or disable gproff profiling.
+/** \brief  Environment variable for setting the gmon output file prefix.
 
-    This function enables/disable gprof profiling.
+    This variable can be set to define a custom prefix for the gmon output
+    file that is generated after profiling. The default filename is gmon.out. 
+    Setting this name will be appended with the PID of the running program 
+    which is always 1 for Dreamcast.
 
-    \param  enable            Enable/disable gprof profiling.
+    Example:
+    \code
+    setenv(GMON_OUT_PREFIX, "test.out", 1);
+    \endcode
+    This will generate a file called \c test.out.1 after profiling is complete.
+*/
+#define GMON_OUT_PREFIX   "GMON_OUT_PREFIX"
+
+/** \brief  Restart or stop gprof profiling.
+
+    This function restarts or stops gprof profiling. It does not start gprof 
+    profiling initially, as gprof profiling starts before the program enters 
+    the main function. You can use this function to stop profiling and then 
+    restart it later when you reach the section of code you want to profile.
+
+    \param  enable            A boolean value to restart (true) or stop (false) 
+                              gprof profiling.
 */
 void moncontrol(bool enable);
 
@@ -39,5 +61,4 @@ void moncontrol(bool enable);
 __END_DECLS
 
 #endif  /* __KOS_GMON_H */
-
 
