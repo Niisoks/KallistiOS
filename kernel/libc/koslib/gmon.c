@@ -10,8 +10,8 @@
 
 /* GMON file header */
 typedef struct gmon_hdr {
-    uintptr_t lpc;     /* base pc address of sample buffer */
-    uintptr_t hpc;     /* max pc address of sampled buffer */
+    uintptr_t lowpc;
+    uintptr_t highpc;
     size_t ncnt;       /* size of sample buffer (plus this header) */
     uint32_t version;  /* version number; 0x00051879 */
     uint32_t profrate; /* profiling clock rate */
@@ -38,6 +38,7 @@ typedef struct gmon_context {
     gmon_state_t state;
     uintptr_t lowpc;
     uintptr_t highpc;
+    uintptr_t pc;
     size_t textsize;
     uint32_t hashfraction;
 
@@ -47,7 +48,6 @@ typedef struct gmon_context {
     size_t nsamples;
     uint32_t *samples;
 
-    kthread_t *main_thread;
     kthread_t *histogram_thread;
 
     volatile bool running_thread;
@@ -58,13 +58,13 @@ static gmon_context_t g_context = {
     .state = GMON_PROF_OFF,
     .lowpc = 0,
     .highpc = 0,
+    .pc = 0,
     .textsize = 0,
     .hashfraction = 0,
     .narcs = 0,
     .arcs = NULL,
     .nsamples = 0,
     .samples = NULL,
-    .main_thread = NULL,
     .histogram_thread = NULL,
     .running_thread = false,
     .initialized = false
@@ -78,8 +78,18 @@ static gmon_context_t g_context = {
 #define HISTOGRAM_INTERVAL_MS  10
 #define SAMPLE_FREQ            100 /* 100 Hz (10 ms intervals) */
 
+#define	HISTCOUNTER	unsigned short
+
 /* One histogram per eight bytes of text space */
-#define HISTFRACTION    8
+#define HISTFRACTION    4
+
+#define	HASHFRACTION	2
+
+#define ARCDENSITY	3
+
+#define MINARCS		50
+
+#define MINARCS		50
 
 static void *histogram_callback(void *arg) {
     (void)arg;
@@ -90,11 +100,11 @@ static void *histogram_callback(void *arg) {
     while(cxt->running_thread) {
 
         if(cxt->state == GMON_PROF_ON) {
-            pc = cxt->main_thread->context.pc;
+            pc = thd_by_tid(1)->context.pc;//cxt->pc;
 
             if(pc >= cxt->lowpc && pc <= cxt->highpc) {
                 index = (pc - cxt->lowpc) / cxt->hashfraction; // We want these to be shifts aka power of two
-                //printf("pc: %p, e: %d\n", (void *)pc, e);
+                //printf("pc: %p, e: %d\n", (void *)pc, index);
                 cxt->samples[index]++;
             }
             else {
@@ -117,7 +127,7 @@ void moncontrol(bool mode) {
         return;
 
     /* Treat start request as stop if error or gmon not initialized */
-    if (mode && cxt->initialized) {
+    if(mode && cxt->initialized) {
         /* Start */
         cxt->state = GMON_PROF_ON;
     } else {
@@ -133,16 +143,13 @@ void _mcount(uintptr_t frompc, uintptr_t selfpc) {
     if(cxt->state != GMON_PROF_ON)
         return;
 
-    /* call might come from stack */
+    /* Make sure call is from within text section */
     if(frompc >= cxt->lowpc && frompc <= cxt->highpc) {
-        // printf("frompc: %p, selfpc: %p\n", (void *)frompc, (void *)selfpc);
+        cxt->pc = selfpc; /* Save the last place we are */
         index = (frompc - cxt->lowpc) / cxt->hashfraction;
         cxt->arcs[index].frompc = frompc;
         cxt->arcs[index].selfpc = selfpc;
         cxt->arcs[index].count++;
-    }
-    else {
-        printf("Outside text range pc(_mcount): %p\n", (void *)frompc);
     }
 }
 
@@ -158,22 +165,17 @@ void __monstartup(uintptr_t lowpc, uintptr_t highpc) {
     cxt->lowpc = ROUNDDOWN(lowpc, HISTFRACTION);
     cxt->highpc = ROUNDUP(highpc, HISTFRACTION);
     cxt->textsize = cxt->highpc - cxt->lowpc;
-
-    printf("Low: %p, High: %p\n", (void *)cxt->lowpc, (void *)cxt->highpc);
-    printf("Textsize: %d\n", cxt->textsize);
-
     cxt->hashfraction = HISTFRACTION;
 
     cxt->narcs = (cxt->textsize + cxt->hashfraction - 1) / cxt->hashfraction;
-    cxt->arcs = (gmon_arc_t *)malloc(cxt->narcs * sizeof(gmon_arc_t));
+    cxt->arcs = (gmon_arc_t *)calloc(cxt->narcs, sizeof(gmon_arc_t));
     if(!cxt->arcs) {
         cxt->state = GMON_PROF_ERROR;
         return;
     }
-    printf("narcs: %d, alloc: %d bytes\n", cxt->narcs, sizeof(gmon_arc_t) * cxt->narcs);
 
     cxt->nsamples = (cxt->textsize + cxt->hashfraction - 1) / cxt->hashfraction;
-    cxt->samples = (uint32_t *)malloc(cxt->nsamples * sizeof(uint32_t));
+    cxt->samples = (uint32_t *)calloc(cxt->nsamples, sizeof(uint32_t));
     if(!cxt->samples) {
         free(cxt->arcs);
         cxt->arcs = NULL;
@@ -181,13 +183,16 @@ void __monstartup(uintptr_t lowpc, uintptr_t highpc) {
         return;
     }
 
-    printf("nsamples: %d, alloc: %d bytes\n", cxt->nsamples, cxt->nsamples * sizeof(uint32_t));
-
-    memset(cxt->arcs, 0, cxt->narcs * (sizeof(gmon_arc_t)));
-    memset(cxt->samples, 0, cxt->nsamples * (sizeof(uint32_t)));
+    printf("Low: %p, High: %p\n", (void *)cxt->lowpc, (void *)cxt->highpc);
+    printf("Textsize: %d\n", cxt->textsize);
+    printf("narcs: %d\n", cxt->narcs);
+    printf("nsamples: %d\n", cxt->nsamples);
+    printf("[Bytes allocated] Arcs: %d bytes, Histogram: %d bytes, Total: %d\n",
+        sizeof(gmon_arc_t) * cxt->narcs,
+        cxt->nsamples * sizeof(uint32_t),
+        sizeof(gmon_arc_t) * cxt->narcs + cxt->nsamples * sizeof(uint32_t));
 
     /* Initialize histogram thread related members */
-    cxt->main_thread = thd_by_tid(MAIN_THREAD_TID);
     cxt->running_thread = true;
     cxt->histogram_thread = thd_create(false, histogram_callback, NULL);
     thd_set_prio(cxt->histogram_thread, PRIO_DEFAULT / 2);
@@ -199,7 +204,7 @@ void __monstartup(uintptr_t lowpc, uintptr_t highpc) {
 void _mcleanup(void) {
     size_t i;
     char *env;
-    char *buf;
+    char buf[64];
     size_t len;
     FILE *out = NULL;
     gmon_hdr_t hdr;
@@ -217,13 +222,9 @@ void _mcleanup(void) {
     /* Check if the output file should be named something else */
     env = getenv(GMON_OUT_PREFIX);
     if(env) {
-        len = snprintf(NULL, 0, "%s.%u", env, getpid());
-        buf = (char *)malloc(len + 1);
-        if(!buf) {
-            snprintf(buf, len + 1, "%s.%u", env, getpid());
+        len = snprintf(buf, sizeof(buf), "%s.%u", env, KOS_PID);
+        if(len > 0 && len < sizeof(buf))
             out = fopen(buf, "wb");
-            free(buf);
-        }
     }
     
     /* Fall back to default output file name */
@@ -231,14 +232,14 @@ void _mcleanup(void) {
         out = fopen("/pc/gmon.out", "wb");
         if(!out) {
             fprintf(stderr, "/pc/gmon.out not opened\n");
-            return;
+            goto cleanup;
         }
     }
-        
+
     /* Write GMON header */
     memset(&hdr, 0, sizeof(hdr));
-    hdr.lpc = cxt->lowpc;
-    hdr.hpc = cxt->highpc;
+    hdr.lowpc = cxt->lowpc;
+    hdr.highpc = cxt->highpc;
     hdr.ncnt = sizeof(hdr) + (sizeof(uint32_t) * cxt->nsamples);
     hdr.version = GMONVERSION;
     hdr.profrate = SAMPLE_FREQ;
@@ -251,7 +252,7 @@ void _mcleanup(void) {
     fwrite(cxt->samples, sizeof(uint32_t), cxt->nsamples, out);
 
     /* Write Arcs */
-    for (i = 0; i < cxt->narcs; i++) {
+    for(i = 0; i < cxt->narcs; i++) {
         if (cxt->arcs[i].count > 0)
             fwrite(&cxt->arcs[i], sizeof(gmon_arc_t), 1, out);
     }
@@ -259,6 +260,7 @@ void _mcleanup(void) {
     /* Close file */
     fclose(out);
 
+cleanup:
     /* Free the memory */
     free(cxt->arcs);
     free(cxt->samples);

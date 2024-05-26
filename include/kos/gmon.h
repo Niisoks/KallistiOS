@@ -9,7 +9,7 @@
     \brief   GPROF support.
     \ingroup debugging_gprof
 
-    This file contains utilities to be used with profiling using gprof.
+    This file provides utilities for profiling applications using gprof.
 
     \author Andy Barajas
 */
@@ -31,14 +31,14 @@ __BEGIN_DECLS
 
 /** \brief  Environment variable for setting the gmon output file prefix.
 
-    This variable can be set to define a custom prefix for the gmon output
-    file that is generated after profiling. The default filename is gmon.out. 
-    Setting this name will be appended with the PID of the running program 
-    which is always 1 for Dreamcast.
+    This variable allows you to set a custom prefix for the gmon output file
+    generated after profiling. The default output filename is gmon.out.
+    If set, the specified prefix will be appended with the PID of the 
+    running program, which is always 1 for Dreamcast.
 
     Example:
     \code
-    setenv(GMON_OUT_PREFIX, "test.out", 1);
+    setenv(GMON_OUT_PREFIX, "/pc/test.out", 1);
     \endcode
     This will generate a file called \c test.out.1 after profiling is complete.
 */
@@ -46,7 +46,7 @@ __BEGIN_DECLS
 
 /** \brief  Restart or stop gprof profiling.
 
-    This function restarts or stops gprof profiling. It does not start gprof 
+    This function restarts or stops gprof profiling. It does NOT start gprof 
     profiling initially, as gprof profiling starts before the program enters 
     the main function. You can use this function to stop profiling and then 
     restart it later when you reach the section of code you want to profile.
@@ -61,4 +61,3 @@ void moncontrol(bool enable);
 __END_DECLS
 
 #endif  /* __KOS_GMON_H */
-
