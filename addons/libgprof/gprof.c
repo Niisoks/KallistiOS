@@ -17,12 +17,12 @@
 #include <stdint.h>
 
 /* Start and End address for .text portion of program */
-#define BASE_ADDRESS 0x8c010000
+extern char _executable_start;
 extern char _etext;
 
 /* Forward declarations for gprof related functions in libc/koslib/gmon.c */
 extern void _mcount(uintptr_t frompc, uintptr_t selfpc);
-extern void __monstartup(uintptr_t lowpc, uintptr_t highpc);
+extern void _monstartup(uintptr_t lowpc, uintptr_t highpc);
 extern void _mcleanup(void);
 
 /* Profiling function called at the entry of each function */
@@ -40,7 +40,7 @@ void __attribute__ ((no_instrument_function, hot)) __cyg_profile_func_exit(void 
 
 /* Constructor function to initialize profiling. Executed before main() */
 void __attribute__ ((no_instrument_function, constructor)) main_constructor(void) {
-    __monstartup(BASE_ADDRESS, (uintptr_t)&_etext);
+    _monstartup((uintptr_t)&_executable_start, (uintptr_t)&_etext);
 }
 
 /* Destructor function to clean up profiling. Executed after return from main() */
