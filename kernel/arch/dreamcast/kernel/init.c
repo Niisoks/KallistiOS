@@ -254,6 +254,11 @@ void  __weak arch_auto_shutdown(void) {
     rtc_shutdown();
 }
 
+/* These are defined in gcrt1.s and linked when compiling with -pg */
+void __weak gprof_init(void);
+void __weak gprof_shutdown(void);
+void __weak gprof_setup_mcount(void);
+
 /* This is the entry point inside the C program */
 void arch_main(void) {
     uint8 *bss_start = (uint8 *)(&_bss_start);
@@ -291,6 +296,9 @@ void arch_main(void) {
     /* Run ctors */
     _init();
 
+    /* Setup gprof */
+    gprof_init();
+
     /* Call the user's main function */
     rv = main(0, NULL);
 
@@ -307,6 +315,9 @@ void arch_set_exit_path(int path) {
 
 /* Does the actual shutdown stuff for a proper shutdown */
 void arch_shutdown(void) {
+    /* Shutdown gprof */
+    gprof_shutdown();
+
     /* Run dtors */
     _fini();
 

@@ -11,7 +11,6 @@
 #define ROUNDDOWN(x,y)	(((x)/(y))*(y))
 #define ROUNDUP(x,y)	((((x)+(y)-1)/(y))*(y))
 
-#define MAIN_THREAD_TID        1
 #define GMONVERSION            0x00051879
 #define HISTOGRAM_INTERVAL_MS  10
 #define SAMPLE_FREQ            100 /* 100 Hz (10 ms intervals) */
@@ -25,9 +24,8 @@
 /* Practical value for all archs */
 #define	HASHFRACTION  2
 
-#define ARCDENSITY	3
-
-#define MINARCS		50
+/* Percentage of the text size we want to allocate for our BST */
+#define ARCDENSITY	  2
 
 /* GMON file header */
 typedef struct gmon_hdr {
@@ -39,14 +37,14 @@ typedef struct gmon_hdr {
     uint32_t spare[3]; /* reserved */
 } gmon_hdr_t;
 
-typedef struct gmon_to {
+typedef struct gmon_node {
     uintptr_t selfpc; /* callee address/program counter. The caller address is in froms[] array which points to tos[] array */
     uint32_t count; /* how many times it has been called */
     uint16_t left; /* link to next entry in hash table. For tos[0] this points to the last used entry */
     uint16_t right; /* additional padding bytes, to have entries 4byte aligned */
-} gmon_to_t;
+} gmon_node_t;
 
-/* GMON arcs */
+/* GMON arc */
 typedef struct gmon_arc {
     uintptr_t frompc;
     uintptr_t selfpc;
@@ -72,9 +70,9 @@ typedef struct gmon_context {
     size_t nfroms;
     uint16_t *froms;
 
-    size_t narcs;
-    gmon_to_t *arcs;
-    size_t arc_count;
+    size_t nnodes;
+    gmon_node_t *nodes;
+    size_t node_count;
 
     size_t ncounters;
     HIST_COUNTER_TYPE *histogram;
@@ -93,9 +91,9 @@ static gmon_context_t g_context = {
     .textsize = 0,
     .nfroms = 0,
     .froms = NULL,
-    .narcs = 0,
-    .arcs = NULL,
-    .arc_count = 0,
+    .nnodes = 0,
+    .nodes = NULL,
+    .node_count = 0,
     .ncounters = 0,
     .histogram = NULL,
     .histogram_thread = NULL,
@@ -106,13 +104,13 @@ static gmon_context_t g_context = {
 /* Used to write the arcs */
 static void traverse_and_write(FILE *out, gmon_context_t *cxt, uint32_t index, uintptr_t from_addr) {
     gmon_arc_t arc;
-    gmon_to_t *node;
+    gmon_node_t *node;
 
     if(index == 0)
         return;
     
     /* Grab a node */
-    node = &cxt->arcs[index];
+    node = &cxt->nodes[index];
 
     /* Traverse the left subtree */
     traverse_and_write(out, cxt, node->left, from_addr);
@@ -136,7 +134,7 @@ static void *histogram_callback(void *arg) {
     while(cxt->running_thread) {
 
         if(cxt->state == GMON_PROF_ON) {
-            /* Use the PC that we saved earlier in _mcount */
+            /* Use the PC that we saved earlier in _mcount() */
             pc = cxt->pc; 
 
             /* If function is within the .text section */
@@ -144,7 +142,7 @@ static void *histogram_callback(void *arg) {
                 /* Compute the index in the histogram */
                 index = (pc - cxt->lowpc) / HISTFRACTION;
 
-                /* Increment the histogram count */
+                /* Increment the histogram counter */
                 cxt->histogram[index]++;
             }
 
@@ -177,10 +175,9 @@ void moncontrol(bool mode) {
 /* Called each time we enter a function */
 void _mcount(uintptr_t frompc, uintptr_t selfpc) {
     uint32_t index;
-    uint16_t arcs_index;
+    uint16_t node_index;
     uint16_t *index_ptr;
-
-    gmon_to_t *node;
+    gmon_node_t *node;
     gmon_context_t *cxt = &g_context;
 
     if(cxt->state != GMON_PROF_ON)
@@ -194,16 +191,16 @@ void _mcount(uintptr_t frompc, uintptr_t selfpc) {
         index = (frompc - cxt->lowpc) / HASHFRACTION;
         index_ptr = &cxt->froms[index];
 
-        /* Grab index into arcs array */
-	    arcs_index = *index_ptr;
+        /* Grab index into node array */
+	    node_index = *index_ptr;
 
-        /* Arc node doesnt exist? */
-        if(arcs_index == 0) {
+        /* Node doesnt exist? */
+        if(node_index == 0) {
             goto create_node;
         }
 
         /* Try and find the node */
-        node = &cxt->arcs[arcs_index];
+        node = &cxt->nodes[node_index];
 
         while(true) {
             /* Found the node */
@@ -218,7 +215,7 @@ void _mcount(uintptr_t frompc, uintptr_t selfpc) {
                     goto create_node;
                 }
 
-                node = &cxt->arcs[node->left];
+                node = &cxt->nodes[node->left];
             }
             else {
                 if(node->right == 0) {
@@ -226,18 +223,18 @@ void _mcount(uintptr_t frompc, uintptr_t selfpc) {
                     goto create_node;
                 }
 
-                node = &cxt->arcs[node->right];
+                node = &cxt->nodes[node->right];
             }
         }
 
 create_node:
-        arcs_index = ++cxt->arc_count;
-        if(arcs_index >= cxt->narcs)
+        node_index = ++cxt->node_count;
+        if(node_index >= cxt->nnodes)
             /* halt further profiling */
             goto overflow;
 
-        *index_ptr = arcs_index;
-        node = &cxt->arcs[arcs_index];
+        *index_ptr = node_index;
+        node = &cxt->nodes[node_index];
         node->selfpc = selfpc;
         node->count = 1;
         node->left = 0;
@@ -254,7 +251,7 @@ overflow:
 void _monstartup(uintptr_t lowpc, uintptr_t highpc) {
     size_t counter_size = 0;
     size_t froms_size = 0;
-    size_t arcs_size = 0;
+    size_t nodes_size = 0;
     gmon_context_t *cxt = &g_context;
 
     /* Exit early if we already initialized */
@@ -273,31 +270,31 @@ void _monstartup(uintptr_t lowpc, uintptr_t highpc) {
     cxt->nfroms = (cxt->textsize + HASHFRACTION - 1) / HASHFRACTION;
     froms_size = cxt->nfroms * sizeof(uint16_t);
 
-    cxt->narcs = (cxt->textsize * ARCDENSITY) / 100;
-    arcs_size = cxt->narcs * sizeof(gmon_to_t);
+    cxt->nnodes = (cxt->textsize * ARCDENSITY) / 100;
+    nodes_size = cxt->nnodes * sizeof(gmon_node_t);
 
     printf("Low: %p, High: %p\n", (void *)cxt->lowpc, (void *)cxt->highpc);
     printf("Textsize: %d\n", cxt->textsize);
     printf("nfroms: %d\n", cxt->nfroms);
-    printf("narcs: %d\n", cxt->narcs);
+    printf("nnodes: %d\n", cxt->nnodes);
     printf("ncounters: %d\n", cxt->ncounters);
-    printf("[Bytes allocated] Froms: %d bytes, Arcs: %d bytes, Histogram: %d bytes, Total: %d\n",
+    printf("[Bytes allocated] Froms: %d bytes, Nodes: %d bytes, Histogram: %d bytes, Total: %d\n",
         froms_size,
-        arcs_size,
+        nodes_size,
         counter_size,
-        counter_size + froms_size + arcs_size);
+        counter_size + froms_size + nodes_size);
 
-    if(posix_memalign((void**)&cxt->histogram, 32, counter_size + froms_size + arcs_size)) {
+    if(posix_memalign((void**)&cxt->histogram, 32, counter_size + froms_size + nodes_size)) {
         cxt->state = GMON_PROF_ERROR;
         fprintf(stderr, "_monstartup: Unable to allocate memory.\n");
         return;
     }
 
-    memset(cxt->histogram, 0, counter_size + froms_size + arcs_size);
+    memset(cxt->histogram, 0, counter_size + froms_size + nodes_size);
     cxt->froms = (uint16_t *)((uintptr_t)cxt->histogram + counter_size);
-    cxt->arcs = (gmon_to_t *)((uintptr_t)cxt->froms + froms_size);
+    cxt->nodes = (gmon_node_t *)((uintptr_t)cxt->froms + froms_size);
 
-    printf("%p %p %p\n", (void *)cxt->histogram, (void *)cxt->froms, (void *)cxt->arcs);
+    printf("%p %p %p\n", (void *)cxt->histogram, (void *)cxt->froms, (void *)cxt->nodes);
 
     /* Initialize histogram thread related members */
     cxt->running_thread = true;
@@ -379,8 +376,6 @@ void _mcleanup(void) {
 
 cleanup:
     /* Free the memory */
-    free(cxt->froms);
-    free(cxt->arcs);
     free(cxt->histogram);
 
     /* Reset buffer to initial state for safety */

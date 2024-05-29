@@ -22,6 +22,11 @@
 .globl __arch_old_fpscr
 .globl __arch_mem_top
 
+#ifdef PROFILE
+.globl _gprof_init
+.globl _gprof_shutdown
+#endif
+
 .weak   _arch_stack_16m
 .weak   _arch_stack_32m
 
@@ -180,8 +185,98 @@ normal_exit:
 	rts
 	nop
 
+#ifdef PROFILE
+! Call profiler startup code
+	.align	2
+_gprof_init:
+	mov.l monstartup_addr, r0
+	mov.l lowpc, r4
+	mov.l highpc, r5
+	jsr @r0
+	nop
+	! Register handler for trapa #33
+	mov.l _trapa_set_handler, r0
+	mov.l #33, r4
+	mov.l mcount_handler_addr, r5
+	mov.l #0, r6
+	jsr @r0
+	nop
+	rts
+	nop
+
+! 
+	.align	2
+_gprof_shutdown:
+	mov.l mcleanup_addr, r0
+	jsr	@r0
+	nop
+	rts
+	nop
+
+	.align	2
+mcount_handler:
+	! Save r4..r7
+	mov.l	r4, @-r15
+	mov.l	r5, @-r15
+	mov.l	r6, @-r15
+	mov.l	r7, @-r15
+	sts.l	pr, @-r15
+
+	sts pr, r4      ! Save previous program counter to r4 (frompc)
+	stc spc,r5	    ! Save current program counter to r5 (selfpc)
+
+	! The code sequence emitted by gcc for the profiling trap is
+	! .long 0   --- This is a 4-byte no-op placeholder to align trapa
+	! trapa #33 --- This is a 2-byte instruction
+	! We need to align the spc so we can return to the instruction directly
+	! after trapa.
+
+	! OR instead of aligning, since we know the trapa did a PC + 2.  Lets just
+	! add 2 to the value from spc to make it a PC + 4?
+
+	add #2, r5      ! Align SPC to 4 bytes
+!	mov #2, r2      ! Pattern to align
+!	not r2, r2      
+!	and r2, r5      ! Align r5 to the next lower multiple of 4
+!	add #4, r5      ! Move to instruction after trapa
+!	mov r5, r2      ! Remember it.
+	ldc r5, spc     ! Load r5 into spc (set the return address to after trapa)
+
+	! call mcount
+	mov.l mcount_addr, r0
+	jsr @r0
+	nop
+
+	! Restore r4..r7
+	lds.l @r15+,pr
+	mov.l @r15+,r7
+	mov.l @r15+,r6
+	mov.l @r15+,r5
+	mov.l @r15+,r4
+
+	rte
+	nop
+
+! GPROF variables
+	.align	2
+
+monstartup_addr:
+	.long __monstartup
+mcleanup_addr:
+	.long __mcleanup
+mcount_addr:
+	.long __mcount
+mcount_handler_addr:
+	.long mcount_handler
+lowpc:
+	.long __executable_start
+highpc:
+	.long __etext
+#endif /* PROFILE */
+
 ! Misc variables
 	.align	2
+
 dcload_magic_addr:
 	.long	0x8c004004
 dcload_magic_value:
