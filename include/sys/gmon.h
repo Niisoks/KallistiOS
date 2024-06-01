@@ -38,7 +38,8 @@ __BEGIN_DECLS
         LDFLAGS = -lgprof
         ```
         These flags enable profiling and prevent function inlining to ensure 
-        accurate profiling data.
+        accurate profiling data.  If you use the -pg flag, the GCC compiler 
+        inserts trapa #33 instructions into your build.
 
     2. Running your program to create gmon.out:
 
