@@ -1,7 +1,8 @@
 ! KallistiOS ##version##
 !
 ! startup.s
-! (c)2000-2001 Megan Potter
+! Copyright (C) 2000-2001 Megan Potter
+! Copyright (C) 2024 Andy Barajas
 !
 ! This file is added to GCC during the patching stage of toolchain
 ! compilation. Any changes to this file will not take effect until the
@@ -189,77 +190,61 @@ normal_exit:
 ! Call profiler startup code
 	.align	2
 _gprof_init:
-	mov.l monstartup_addr, r0
+	sts.l pr, @-r15
+
 	mov.l lowpc, r4
 	mov.l highpc, r5
-	jsr @r0
+	mov.l monstartup_addr, r2
+	jsr @r2
 	nop
+	
 	! Register handler for trapa #33
-	mov.l _trapa_set_handler, r0
-	mov.l #33, r4
+	mov   #33, r4
 	mov.l mcount_handler_addr, r5
-	mov.l #0, r6
-	jsr @r0
-	nop
-	rts
+	mov   #0, r6
+	mov.l trapa_handler_addr, r2
+	jsr @r2
 	nop
 
+	lds.l @r15+, pr
+	rts
+	nop
+	
 ! 
 	.align	2
 _gprof_shutdown:
-	mov.l mcleanup_addr, r0
-	jsr	@r0
+	sts.l pr, @-r15
+
+	mov.l mcleanup_addr, r2
+	jsr	@r2
 	nop
+
+	lds.l @r15+, pr
 	rts
 	nop
 
+! The code sequence emitted by gcc for the profiling trap is
+! .long 0   --- This is a 4-byte no-op placeholder to align trapa
+! trapa #33 --- This is a 2-byte instruction
+! We need to align the spc(aka += 2) so we can return to the instruction 
+! directly after trapa.
+! void mcount_handler(irq_t code, irq_context_t *context, void *data)
+!
 	.align	2
 mcount_handler:
-	! Save r4..r7
-	mov.l	r4, @-r15
-	mov.l	r5, @-r15
-	mov.l	r6, @-r15
-	mov.l	r7, @-r15
-	sts.l	pr, @-r15
-
-	sts pr, r4      ! Save previous program counter to r4 (frompc)
-	stc spc,r5	    ! Save current program counter to r5 (selfpc)
-
-	! The code sequence emitted by gcc for the profiling trap is
-	! .long 0   --- This is a 4-byte no-op placeholder to align trapa
-	! trapa #33 --- This is a 2-byte instruction
-	! We need to align the spc so we can return to the instruction directly
-	! after trapa.
-
-	! OR instead of aligning, since we know the trapa did a PC + 2.  Lets just
-	! add 2 to the value from spc to make it a PC + 4?
-
-	add #2, r5      ! Align SPC to 4 bytes
-!	mov #2, r2      ! Pattern to align
-!	not r2, r2      
-!	and r2, r5      ! Align r5 to the next lower multiple of 4
-!	add #4, r5      ! Move to instruction after trapa
-!	mov r5, r2      ! Remember it.
-	ldc r5, spc     ! Load r5 into spc (set the return address to after trapa)
-
-	! call mcount
-	mov.l mcount_addr, r0
-	jsr @r0
-	nop
-
-	! Restore r4..r7
-	lds.l @r15+,pr
-	mov.l @r15+,r7
-	mov.l @r15+,r6
-	mov.l @r15+,r5
-	mov.l @r15+,r4
-
-	rte
-	nop
+	mov	  r5, r1
+	mov.l @r5, r5
+	mov.l @(4,r1), r4
+	add	  #2, r5
+	mov.l r5, @r1
+	mov.l mcount_addr, r1
+	jmp	  @r1
+	nop	
 
 ! GPROF variables
 	.align	2
-
+trapa_handler_addr:
+	.long _trapa_set_handler
 monstartup_addr:
 	.long __monstartup
 mcleanup_addr:

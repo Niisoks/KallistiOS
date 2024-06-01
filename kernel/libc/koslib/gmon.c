@@ -1,11 +1,23 @@
+/* KallistiOS ##version##
 
-#include <stdint.h>
+    gmon.c
+    Copyright (C) 2024 Andy Barajas
+
+    The methods provided in this file are based on the principles outlined in 
+    the gprof profiling article. However, instead of utilizing a linked list 
+    for storing profiling data, a binary search tree (BST) is used instead.
+
+    Article:
+    (https://mcuoneclipse.com/2015/08/23/tutorial-using-gnu-profiling-gprof-with-arm-cortex-m/)
+
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 
 #include <string.h>
 
-#include <kos/gmon.h>
+#include <sys/gmon.h>
 #include <kos/thread.h>
 
 #define ROUNDDOWN(x,y)	(((x)/(y))*(y))
@@ -27,21 +39,24 @@
 /* Percentage of the text size we want to allocate for our BST */
 #define ARCDENSITY	  2
 
+#define MAX_NODES     65535
+
 /* GMON file header */
 typedef struct gmon_hdr {
-    uintptr_t lowpc;
-    uintptr_t highpc;
-    size_t ncnt;       /* size of histogram buffer (plus this header) */
-    uint32_t version;  /* version number; 0x00051879 */
-    uint32_t profrate; /* profiling clock rate */
-    uint32_t spare[3]; /* reserved */
+    uintptr_t lowpc;    /* Lower bound of the program address range being profiled */
+    uintptr_t highpc;   /* Upper bound of the program address range being profiled */
+    size_t buffer_size; /* Size of histogram buffer (plus this header) */
+    uint32_t version;   /* Version number; 0x00051879 */
+    uint32_t profrate;  /* Profiling clock rate, 100Hz in our case */
+    uint32_t spare[3];  /* Reserved */
 } gmon_hdr_t;
 
+/* BST node */
 typedef struct gmon_node {
-    uintptr_t selfpc; /* callee address/program counter. The caller address is in froms[] array which points to tos[] array */
-    uint32_t count; /* how many times it has been called */
-    uint16_t left; /* link to next entry in hash table. For tos[0] this points to the last used entry */
-    uint16_t right; /* additional padding bytes, to have entries 4byte aligned */
+    uintptr_t selfpc;
+    uint32_t count;
+    uint16_t left;
+    uint16_t right;
 } gmon_node_t;
 
 /* GMON arc */
@@ -67,16 +82,18 @@ typedef struct gmon_context {
     uintptr_t pc;
     size_t textsize;
 
+    /* Array of indices to heads of BST */
     size_t nfroms;
     uint16_t *froms;
 
+    /* BST */
     size_t nnodes;
     gmon_node_t *nodes;
     size_t node_count;
 
+    /* Histogram */
     size_t ncounters;
     HIST_COUNTER_TYPE *histogram;
-
     kthread_t *histogram_thread;
 
     volatile bool running_thread;
@@ -101,7 +118,7 @@ static gmon_context_t g_context = {
     .initialized = false
 };
 
-/* Used to write the arcs */
+/* Function to write the arcs to gmon.out */
 static void traverse_and_write(FILE *out, gmon_context_t *cxt, uint32_t index, uintptr_t from_addr) {
     gmon_arc_t arc;
     gmon_node_t *node;
@@ -125,14 +142,14 @@ static void traverse_and_write(FILE *out, gmon_context_t *cxt, uint32_t index, u
     traverse_and_write(out, cxt, node->right, from_addr);
 }
 
-static void *histogram_callback(void *arg) {
+/* Function that gets executed every 10ms */
+static void *histogram_thread(void *arg) {
     (void)arg;
     uintptr_t pc;
     uint32_t index;
     gmon_context_t *cxt = &g_context;
 
     while(cxt->running_thread) {
-
         if(cxt->state == GMON_PROF_ON) {
             /* Use the PC that we saved earlier in _mcount() */
             pc = cxt->pc; 
@@ -149,27 +166,26 @@ static void *histogram_callback(void *arg) {
             /* Sleep for 10ms before the next sample */
             thd_sleep(HISTOGRAM_INTERVAL_MS);
         }
-
     }
 
     return NULL;
 }
 
-void moncontrol(bool mode) {
+/* Function to enable/disable gprofiling */
+void moncontrol(bool enable) {
     gmon_context_t *cxt = &g_context;
 
     /* Don't change the state if we ran into an error */
     if(cxt->state == GMON_PROF_ERROR)
         return;
 
-    /* Treat start request as stop if error or gmon not initialized */
-    if(mode && cxt->initialized) {
+    /* Start only if enabled and initialized */
+    if(enable && cxt->initialized)
         /* Start */
         cxt->state = GMON_PROF_ON;
-    } else {
+    else
         /* Stop */
         cxt->state = GMON_PROF_OFF;
-    }
 }
 
 /* Called each time we enter a function */
@@ -185,7 +201,8 @@ void _mcount(uintptr_t frompc, uintptr_t selfpc) {
 
     /* If function is within the .text section */
     if(frompc >= cxt->lowpc && frompc <= cxt->highpc) {
-        cxt->pc = selfpc; /* Save the last place we are */
+        /* Save the last place we are */
+        cxt->pc = selfpc; 
 
         /* Calculate index into 'froms' array */
         index = (frompc - cxt->lowpc) / HASHFRACTION;
@@ -195,9 +212,8 @@ void _mcount(uintptr_t frompc, uintptr_t selfpc) {
 	    node_index = *index_ptr;
 
         /* Node doesnt exist? */
-        if(node_index == 0) {
+        if(node_index == 0)
             goto create_node;
-        }
 
         /* Try and find the node */
         node = &cxt->nodes[node_index];
@@ -214,7 +230,7 @@ void _mcount(uintptr_t frompc, uintptr_t selfpc) {
                     index_ptr = &node->left;
                     goto create_node;
                 }
-
+                /* Visit left node */
                 node = &cxt->nodes[node->left];
             }
             else {
@@ -222,41 +238,43 @@ void _mcount(uintptr_t frompc, uintptr_t selfpc) {
                     index_ptr = &node->right;
                     goto create_node;
                 }
-
+                /* Visit right node */
                 node = &cxt->nodes[node->right];
             }
         }
 
 create_node:
+        /* 'Allocate' a node */
         node_index = ++cxt->node_count;
         if(node_index >= cxt->nnodes)
-            /* halt further profiling */
             goto overflow;
 
         *index_ptr = node_index;
         node = &cxt->nodes[node_index];
         node->selfpc = selfpc;
         node->count = 1;
-        node->left = 0;
-        node->right = 0;
         return;
 
 overflow:
         cxt->state = GMON_PROF_ERROR;
-        //ERR("mcount: call graph buffer size limit exceeded, gmon.out will not be generated\n");
+        dbglog(DBG_ERROR, "_mcount: BST size limit exceeded, gmon.out will not be generated.\n");
         return;
     }
 }
 
+/* Called to setup gprof profiling */
 void _monstartup(uintptr_t lowpc, uintptr_t highpc) {
-    size_t counter_size = 0;
-    size_t froms_size = 0;
-    size_t nodes_size = 0;
+    size_t counter_size;
+    size_t froms_size;
+    size_t nodes_size;
+    size_t allocate_size;
     gmon_context_t *cxt = &g_context;
 
     /* Exit early if we already initialized */
-    if(cxt->initialized)
+    if(cxt->initialized) {
+        dbglog(DBG_NOTICE, "_monstartup: Already initialized.\n");
         return;
+    }
 
     cxt->lowpc = ROUNDDOWN(lowpc, HISTFRACTION * sizeof(HIST_COUNTER_TYPE));
     cxt->highpc = ROUNDUP(highpc, HISTFRACTION * sizeof(HIST_COUNTER_TYPE));
@@ -271,35 +289,33 @@ void _monstartup(uintptr_t lowpc, uintptr_t highpc) {
     froms_size = cxt->nfroms * sizeof(uint16_t);
 
     cxt->nnodes = (cxt->textsize * ARCDENSITY) / 100;
+    if(cxt->nnodes > MAX_NODES) cxt->nnodes = MAX_NODES;
     nodes_size = cxt->nnodes * sizeof(gmon_node_t);
 
-    printf("Low: %p, High: %p\n", (void *)cxt->lowpc, (void *)cxt->highpc);
-    printf("Textsize: %d\n", cxt->textsize);
-    printf("nfroms: %d\n", cxt->nfroms);
-    printf("nnodes: %d\n", cxt->nnodes);
-    printf("ncounters: %d\n", cxt->ncounters);
-    printf("[Bytes allocated] Froms: %d bytes, Nodes: %d bytes, Histogram: %d bytes, Total: %d\n",
-        froms_size,
-        nodes_size,
-        counter_size,
-        counter_size + froms_size + nodes_size);
+    /* Allocate enough so all buffers can be 32-byte aligned */
+    allocate_size = counter_size + froms_size + nodes_size + 64;
 
-    if(posix_memalign((void**)&cxt->histogram, 32, counter_size + froms_size + nodes_size)) {
+    dbglog(DBG_NOTICE, "[GPROF] Profiling from <%p to %p>\n", 
+        (void *)cxt->lowpc, (void *)cxt->highpc);
+
+    if(posix_memalign((void**)&cxt->histogram, 32, allocate_size)) {
         cxt->state = GMON_PROF_ERROR;
-        fprintf(stderr, "_monstartup: Unable to allocate memory.\n");
+        dbglog(DBG_ERROR, "_monstartup: Unable to allocate memory.\n");
         return;
     }
 
-    memset(cxt->histogram, 0, counter_size + froms_size + nodes_size);
-    cxt->froms = (uint16_t *)((uintptr_t)cxt->histogram + counter_size);
-    cxt->nodes = (gmon_node_t *)((uintptr_t)cxt->froms + froms_size);
+    dbglog(DBG_NOTICE, "[GPROF] Total memory allocated: %d bytes\n\n", allocate_size);
 
-    printf("%p %p %p\n", (void *)cxt->histogram, (void *)cxt->froms, (void *)cxt->nodes);
+    /* Clear and align the other buffers to 32 bytes */
+    memset(cxt->histogram, 0, allocate_size);
+    cxt->froms = (uint16_t *)((uintptr_t)cxt->histogram + ROUNDUP(counter_size, 32));
+    cxt->nodes = (gmon_node_t *)((uintptr_t)cxt->froms + ROUNDUP(froms_size, 32));
 
     /* Initialize histogram thread related members */
     cxt->running_thread = true;
-    cxt->histogram_thread = thd_create(false, histogram_callback, NULL);
+    cxt->histogram_thread = thd_create(false, histogram_thread, NULL);
     thd_set_prio(cxt->histogram_thread, PRIO_DEFAULT / 2);
+    thd_set_label(cxt->histogram_thread, "histogram_thread");
 
     cxt->initialized = true;
 
@@ -307,9 +323,10 @@ void _monstartup(uintptr_t lowpc, uintptr_t highpc) {
     moncontrol(true);
 }
 
+/* Called to cleanup and generate gmon.out file */
 void _mcleanup(void) {
     char *env;
-    char buf[64];
+    char buf[128];
     size_t len;
     FILE *out = NULL;
     gmon_hdr_t hdr;
@@ -323,8 +340,10 @@ void _mcleanup(void) {
     thd_join(cxt->histogram_thread, NULL);
 
     /* Dont output if uninitialized or we encountered an error */
-    if(!cxt->initialized || cxt->state == GMON_PROF_ERROR)
-        return;
+    if(!cxt->initialized || cxt->state == GMON_PROF_ERROR) {
+        dbglog(DBG_ERROR, "_mcleanup: uninitialized or we encountered an error. \n");
+        goto cleanup;
+    }
 
     /* Check if the output file should be named something else */
     env = getenv(GMON_OUT_PREFIX);
@@ -336,9 +355,10 @@ void _mcleanup(void) {
     
     /* Fall back to default output file name */
     if(!out) {
-        out = fopen("/pc/gmon.out", "wb");
+        snprintf(buf, sizeof(buf), "/pc/gmon.out");
+        out = fopen(buf, "wb");
         if(!out) {
-            fprintf(stderr, "/pc/gmon.out not opened\n");
+            dbglog(DBG_ERROR, "/pc/gmon.out not opened.\n");
             goto cleanup;
         }
     }
@@ -347,12 +367,9 @@ void _mcleanup(void) {
     memset(&hdr, 0, sizeof(hdr));
     hdr.lowpc = cxt->lowpc;
     hdr.highpc = cxt->highpc;
-    hdr.ncnt = sizeof(hdr) + (sizeof(HIST_COUNTER_TYPE) * cxt->ncounters);
+    hdr.buffer_size = sizeof(hdr) + (sizeof(HIST_COUNTER_TYPE) * cxt->ncounters);
     hdr.version = GMONVERSION;
     hdr.profrate = SAMPLE_FREQ;
-    hdr.spare[0] = 0;
-    hdr.spare[1] = 0;
-    hdr.spare[2] = 0;
     fwrite(&hdr, sizeof(hdr), 1, out);
 
     /* Write Histogram */
@@ -364,18 +381,18 @@ void _mcleanup(void) {
         if(cxt->froms[from_index] == 0)
 	        continue;
         
-        /* Construct from address by performing reciprical of hash to insert */
+        /* Construct 'from' address by performing reciprical of hash to insert */
         from_addr = (HASHFRACTION * from_index) + cxt->lowpc;
 
         /* Write out the arcs in the BST */
         traverse_and_write(out, cxt, cxt->froms[from_index], from_addr);
     }
 
-    /* Close file */
+    dbglog(DBG_NOTICE, "Successfully generated %s.\n\n", buf);
+
     fclose(out);
 
 cleanup:
-    /* Free the memory */
     free(cxt->histogram);
 
     /* Reset buffer to initial state for safety */

@@ -10,7 +10,7 @@
 
     Note: This implementation requires the following compilation and linking flags:
 
-    CFLAGS = -g -finstrument-functions
+    CFLAGS = -g -fno-inline -finstrument-functions
     LDFLAGS = -lgprof
 */
 

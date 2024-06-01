@@ -257,7 +257,6 @@ void  __weak arch_auto_shutdown(void) {
 /* These are defined in gcrt1.s and linked when compiling with -pg */
 void __weak gprof_init(void);
 void __weak gprof_shutdown(void);
-void __weak gprof_setup_mcount(void);
 
 /* This is the entry point inside the C program */
 void arch_main(void) {
