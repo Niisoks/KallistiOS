@@ -224,8 +224,9 @@ _gprof_shutdown:
 	nop
 
 ! The code sequence emitted by gcc for the profiling trap is
-! .long 0   --- This is a 4-byte no-op placeholder to align trapa
 ! trapa #33 --- This is a 2-byte instruction
+! nop       --- This is a 2-byte no-op placeholder
+
 ! We need to align the spc(aka += 2) so we can return to the instruction 
 ! directly after trapa.
 ! void mcount_handler(irq_t code, irq_context_t *context, void *data)
