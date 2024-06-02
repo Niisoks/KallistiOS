@@ -254,7 +254,7 @@ void  __weak arch_auto_shutdown(void) {
     rtc_shutdown();
 }
 
-/* These are defined in gcrt1.s and linked when compiling with -pg */
+/* These are strongly defined in gcrt1.s and linked when compiling with -pg */
 void __weak gprof_init(void) {}
 void __weak gprof_shutdown(void) {}
 
@@ -314,11 +314,11 @@ void arch_set_exit_path(int path) {
 
 /* Does the actual shutdown stuff for a proper shutdown */
 void arch_shutdown(void) {
-    /* Shutdown gprof */
-    gprof_shutdown();
-
     /* Run dtors */
     _fini();
+
+    /* Shutdown gprof */
+    gprof_shutdown();
 
     dbglog(DBG_CRITICAL, "arch: shutting down kernel\n");
 
