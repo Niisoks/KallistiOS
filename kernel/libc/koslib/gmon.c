@@ -154,7 +154,7 @@ static void *histogram_thread(void *arg) {
     while(cxt->running_thread) {
         if(cxt->state == GMON_PROF_ON) {
             /* Grab the PC of the kernel thread */
-            pc = cxt->main_thread->context.pc;//thd_by_tid(MAIN_THREAD_TID)->context.pc; 
+            pc = cxt->main_thread->context.pc;
 
             /* If function is within the .text section */
             if(pc >= cxt->lowpc && pc <= cxt->highpc) {
@@ -344,7 +344,7 @@ cleanup:
 }
 
 /* Called to setup gprof profiling */
-void _monstartupbase(uintptr_t lowpc, uintptr_t highpc, bool have_callgraph) {
+static void _monstartupbase(uintptr_t lowpc, uintptr_t highpc, bool generate_callgraph) {
     size_t counter_size;
     size_t froms_size;
     size_t nodes_size;
@@ -366,7 +366,7 @@ void _monstartupbase(uintptr_t lowpc, uintptr_t highpc, bool have_callgraph) {
     cxt->ncounters = (cxt->textsize + HISTFRACTION - 1) / HISTFRACTION;
     counter_size = cxt->ncounters * sizeof(HIST_COUNTER_TYPE);
 
-    if(have_callgraph) {
+    if(generate_callgraph) {
         cxt->nfroms = (cxt->textsize + HASHFRACTION - 1) / HASHFRACTION;
         froms_size = cxt->nfroms * sizeof(uint16_t);
 
@@ -397,7 +397,7 @@ void _monstartupbase(uintptr_t lowpc, uintptr_t highpc, bool have_callgraph) {
 
     /* Clear and align the other buffers to 32 bytes */
     memset(cxt->histogram, 0, allocate_size);
-    if(have_callgraph) {
+    if(generate_callgraph) {
         cxt->froms = (uint16_t *)((uintptr_t)cxt->histogram + ROUNDUP(counter_size, 32));
         cxt->nodes = (gmon_node_t *)((uintptr_t)cxt->froms + ROUNDUP(froms_size, 32));
     }
