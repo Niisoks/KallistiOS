@@ -25,7 +25,6 @@
 
 #ifdef PROFILE
 .globl _gprof_init
-.globl _gprof_shutdown
 #endif
 
 .weak   _arch_stack_16m
@@ -209,19 +208,6 @@ _gprof_init:
 	lds.l @r15+, pr
 	rts
 	nop
-	
-! 
-	.align	2
-_gprof_shutdown:
-	sts.l pr, @-r15
-
-	mov.l mcleanup_addr, r2
-	jsr	@r2
-	nop
-
-	lds.l @r15+, pr
-	rts
-	nop
 
 ! The code sequence emitted by gcc for the profiling trap is
 ! trapa #33 --- This is a 2-byte instruction
@@ -242,12 +228,11 @@ mcount_handler:
 
 ! GPROF variables
 	.align	2
-trapa_handler_addr:
-	.long _trapa_set_handler
+
 monstartup_addr:
 	.long __monstartup
-mcleanup_addr:
-	.long __mcleanup
+trapa_handler_addr:
+	.long _trapa_set_handler
 mcount_addr:
 	.long __mcount
 mcount_handler_addr:

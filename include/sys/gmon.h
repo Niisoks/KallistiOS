@@ -99,6 +99,21 @@ __BEGIN_DECLS
 */
 #define GMON_OUT_PREFIX   "GMON_OUT_PREFIX"
 
+/** \brief  Start gprof profiling for a specified address range.
+
+    This function is intended for programs not linked with the `-pg' linker 
+    switch. If `-pg' was used during linking, monstartup is automatically 
+    called by the startup code with arguments covering the entire range of 
+    executable addresses, from the program's entry point to the highest code 
+    segment address. Using this method to initialize gprof will only generate 
+    histogram profiling data, without producing a call graph. Profiling starts 
+    immediately after calling this function.
+
+    \param  lowpc   The lower bound of the address range to profile.
+    \param  highpc  The upper bound of the address range to profile.
+*/
+void monstartup(uintptr_t lowpc, uintptr_t highpc);
+
 /** \brief  Restart or stop gprof profiling.
 
     This function restarts or stops gprof profiling. It does NOT start gprof 
