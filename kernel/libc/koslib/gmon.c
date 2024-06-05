@@ -198,6 +198,8 @@ void _mcount(uintptr_t frompc, uintptr_t selfpc) {
     gmon_node_t *node;
     gmon_context_t *cxt = &g_context;
 
+    printf("_mcount\n");
+
     if(cxt->state != GMON_PROF_ON)
         return;
 

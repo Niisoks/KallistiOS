@@ -220,7 +220,7 @@ mcount_handler:
 	mov	  r5, r1
 	mov.l @r5, r5
 	mov.l @(4,r1), r4
-	add	  #2, r5
+	add   #2, r5
 	mov.l r5, @r1
 	mov.l mcount_addr, r1
 	jmp	  @r1

@@ -52,10 +52,6 @@
 
 ___kos_init_flags:
     .long   0
-__executable_start:
-    .byte   0
-__etext:
-    .byte   0
 
 _arch_main:
 __monstartup:
