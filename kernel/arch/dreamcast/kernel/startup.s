@@ -217,7 +217,7 @@ _gprof_init:
 !
 	.align	2
 mcount_handler:
-	mov	  r5, r1
+	mov   r5, r1
 	mov.l @r5, r5
 	mov.l @(4,r1), r4
 
@@ -231,8 +231,8 @@ mcount_handler:
 	mov.l r5, @r1
 
 	mov.l mcount_addr, r1
-	jmp	  @r1
-	nop	
+	jmp   @r1
+	nop
 
 ! GPROF variables
 	.align	2
