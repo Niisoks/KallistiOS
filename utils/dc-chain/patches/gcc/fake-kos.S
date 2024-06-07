@@ -9,8 +9,6 @@
     .weak   ___kos_init_flags
     .weak   _arch_main
     .weak   __monstartup
-    .weak   _trapa_set_handler
-    .weak   __mcount
     .weak   __executable_start
     .weak   __etext
 
@@ -55,8 +53,6 @@ ___kos_init_flags:
 
 _arch_main:
 __monstartup:
-_trapa_set_handler:
-__mcount:
 _free:
 _abort:
 _malloc:
