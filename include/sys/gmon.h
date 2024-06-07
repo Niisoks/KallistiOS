@@ -84,6 +84,16 @@ __BEGIN_DECLS
     @{
 */
 
+/** \brief  GPROF Trapa Code
+
+    GCC generates this pattern before each profiled function when you compile 
+    your project with the -pg flag:
+
+    trapa #33 --- This is a 2-byte instruction
+    nop       --- This is a 2-byte no-op placeholder
+*/
+#define GPROF_TRAPA_CODE  33
+
 /** \brief  Environment variable for setting the gmon output file prefix.
 
     This variable allows you to set a custom prefix for the gmon output file

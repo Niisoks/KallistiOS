@@ -423,8 +423,19 @@ void monstartup(uintptr_t lowpc, uintptr_t highpc) {
     _monstartupbase(lowpc, highpc, false);
 }
 
+/* Call _mcount when we encounter trapa #33 */
+static void handle_gprof_trapa(irq_t code, irq_context_t *context, void *data) {
+    (void)code;
+    (void)data;
+
+    _mcount(context->pr, context->pc);
+}
+
 /* This function will generate a callgraph */
 void _monstartup(uintptr_t lowpc, uintptr_t highpc) {
     _monstartupbase(lowpc, highpc, true);
+
+    /* Setup handler to catch trapa #33 */
+    trapa_set_handler(GPROF_TRAPA_CODE, handle_gprof_trapa, NULL);
 }
 

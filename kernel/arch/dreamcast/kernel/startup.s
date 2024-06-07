@@ -187,64 +187,19 @@ normal_exit:
 
 #ifdef PROFILE
 ! Call profiler startup code
-	.align	2
+	.align 2
 _gprof_init:
-	sts.l pr, @-r15
-
 	mov.l lowpc, r4
 	mov.l highpc, r5
 	mov.l monstartup_addr, r2
-	jsr @r2
-	nop
-	
-	! Register handler for trapa #33
-	mov   #33, r4
-	mov.l mcount_handler_addr, r5
-	mov   #0, r6
-	mov.l trapa_handler_addr, r2
-	jsr @r2
-	nop
-
-	lds.l @r15+, pr
-	rts
-	nop
-
-! The code sequence emitted by gcc for the profiling trap is
-! trapa #33 --- This is a 2-byte instruction
-! nop       --- This is a 2-byte no-op placeholder
-!
-! void mcount_handler(irq_t code, irq_context_t *context, void *data)
-!
-	.align	2
-mcount_handler:
-	mov   r5, r1
-	mov.l @r5, r5
-	mov.l @(4,r1), r4
-
-	!add   #2, r5
-	!mov.l r5, @r1
-
-	mov #3, r2
-	not r2, r2      ! pattern to align to 4
-	and r2, r5      ! r5 now has aligned address
-	add #4, r5
-	mov.l r5, @r1
-
-	mov.l mcount_addr, r1
-	jmp   @r1
+	jmp @r2
 	nop
 
 ! GPROF variables
-	.align	2
+	.align 2
 
 monstartup_addr:
 	.long __monstartup
-trapa_handler_addr:
-	.long _trapa_set_handler
-mcount_addr:
-	.long __mcount
-mcount_handler_addr:
-	.long mcount_handler
 lowpc:
 	.long __executable_start
 highpc:
