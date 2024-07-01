@@ -88,8 +88,7 @@ int main(int argc, char **argv) {
         bfont_draw_str_vram(10, 48, SHOW_BLACK_BG, 
             "Press A to take a screen shot");
 
-        /* Without this the bfont wont show on the screen */
-        thd_sleep(10);
+        vid_flip(-1);
     }
 
     return 0;

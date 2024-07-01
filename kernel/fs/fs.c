@@ -184,6 +184,7 @@ static int fs_hnd_unref(fs_hnd_t * ref) {
 
         free(ref);
     }
+
     return retval;
 }
 
@@ -213,11 +214,17 @@ static int fs_hnd_assign(fs_hnd_t * hnd) {
 int fs_fdtbl_destroy(void) {
     int i;
 
-    for(i = 0; i < FD_SETSIZE; i++) {
-        if(fd_table[i])
-            fs_hnd_unref(fd_table[i]);
+    for (i = 0; i < FD_SETSIZE; i++) {
+        fs_hnd_t *handle = fd_table[i];
 
-        fd_table[i] = NULL;
+        if(handle) {
+            if(handle->handler && handle->handler->close) {
+                handle->handler->close(handle->hnd);
+            }
+
+            free(handle);
+            fd_table[i] = NULL;
+        }
     }
 
     return 0;
@@ -360,13 +367,6 @@ ssize_t fs_read(file_t fd, void *buffer, size_t cnt) {
 
 ssize_t fs_write(file_t fd, const void *buffer, size_t cnt) {
     fs_hnd_t *h;
-
-    // XXX This is a hack to make newlib printf work because it
-    // doesn't like fs_pty. I'll figure out why later...
-    if(fd == 1 || fd == 2) {
-        dbgio_write_buffer_xlat((const uint8 *)buffer, cnt);
-        return cnt;
-    }
 
     h = fs_map_hnd(fd);
 
@@ -912,4 +912,5 @@ int fs_init(void) {
 }
 
 void fs_shutdown(void) {
+    fs_fdtbl_destroy();
 }
