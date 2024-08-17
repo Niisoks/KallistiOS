@@ -44,6 +44,9 @@ typedef struct {
     pvr_vertex_t *data;
 } sphere_t;
 
+static sphere_t big_sphere = { 1.2f, 20, 20, NULL };
+static sphere_t small_sphere = { 0.8f, 20, 20, NULL };
+
 static void sphere(sphere_t *s) { /* {{{ */
     int i, j;
     float   pitch, pitch2;
@@ -51,9 +54,10 @@ static void sphere(sphere_t *s) { /* {{{ */
     float   yaw;
     pvr_vertex_t *v;
 
-    v = (pvr_vertex_t *)malloc(s->stacks * (s->slices + 2) * sizeof(pvr_vertex_t) + 32);
-    v = (pvr_vertex_t *)(((uint32)v & ~31) + 32); /* align to 32 bytes */
-    s->data = v;
+    s->data = (pvr_vertex_t *)memalign(32, s->stacks * (s->slices + 2) * sizeof(pvr_vertex_t));
+    if(s->data == NULL) return;
+
+    v = s->data;
     // s->data_trans = (pvr_vertex_t *)malloc(s->stacks * (s->slices+2) * sizeof(pvr_vertex_t));
     /* transformed data -- for testing mat_transform */
     printf("allocated %d bytes for %d stacks, %d + 2 slices, and %d-byte pvr_vertex_t\n",
@@ -152,8 +156,6 @@ static float r = 0;
 static void sphere_frame(void) {
     int i;
     //uint64 start;
-    static sphere_t big_sphere = { 1.2f, 20, 20, NULL };
-    static sphere_t small_sphere = { 0.8f, 20, 20, NULL };
 
     if(!big_sphere.data)
         sphere(&big_sphere);
@@ -292,6 +294,9 @@ int main(int argc, char **argv) {
     pvr_get_stats(&stats);
     dbglog(DBG_DEBUG, "3D Stats: %u vblanks, frame rate ~%f fps, max vertex used %u bytes\n",
            stats.vbl_count, stats.frame_rate, stats.vtx_buffer_used_max);
+
+    free(big_sphere.data);
+    free(small_sphere.data);
 
     return 0;
 }

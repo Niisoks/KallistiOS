@@ -32,6 +32,7 @@ __BEGIN_DECLS
 #include <string.h>
 #include <unistd.h>
 
+#include <kos/version.h>
 #include <kos/fs.h>
 #include <kos/fs_romdisk.h>
 #include <kos/fs_ramdisk.h>
@@ -57,6 +58,7 @@ __BEGIN_DECLS
 #include <kos/fs_socket.h>
 #include <kos/string.h>
 #include <kos/init.h>
+#include <kos/oneshot_timer.h>
 
 #include <arch/arch.h>
 #include <arch/cache.h>

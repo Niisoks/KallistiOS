@@ -24,6 +24,7 @@
 #include <kos/genwait.h>
 #include <arch/irq.h>
 #include <arch/timer.h>
+#include <dc/perfctr.h>
 #include <arch/arch.h>
 
 /*
@@ -71,13 +72,13 @@ static struct ktqueue run_queue;
 kthread_t *thd_current = NULL;
 
 /* Thread mode: uninitialized or pre-emptive. */
-static int thd_mode = THD_MODE_NONE;
+static kthread_mode_t thd_mode = THD_MODE_NONE;
 
 /* Reaper semaphore. Counts the number of threads waiting to be reaped. */
 static semaphore_t thd_reap_sem;
 
 /* Number of threads active in the system. */
-static uint32_t thd_count = 0;
+static size_t thd_count = 0;
 
 /* The idle task */
 static kthread_t *thd_idle_thd = NULL;
@@ -120,13 +121,14 @@ int thd_each(int (*cb)(kthread_t *thd, void *user_data), void *data) {
 }
 
 int thd_pslist(int (*pf)(const char *fmt, ...)) {
+    uint64_t cpu_time, ns_time;
     kthread_t *cur;
 
     pf("All threads (may not be deterministic):\n");
-    pf("addr\t\ttid\tprio\tflags\twait_timeout\tstate     name\n");
+    pf("addr\t  tid\tprio\tflags\t  wait_timeout\tcpu_time\t      state\t  name\n");
 
     LIST_FOREACH(cur, &thd_list, t_list) {
-        pf("%08lx\t", CONTEXT_PC(cur->context));
+        pf("%08lx  ", CONTEXT_PC(cur->context));
         pf("%d\t", cur->tid);
 
         if(cur->prio == PRIO_MAX)
@@ -134,10 +136,17 @@ int thd_pslist(int (*pf)(const char *fmt, ...)) {
         else
             pf("%d\t", cur->prio);
 
-        pf("%08lx\t", cur->flags);
-        pf("%ld\t\t", (uint32_t)cur->wait_timeout);
-        pf("%10s", thd_state_to_str(cur));
-        pf("%s\n", cur->label);
+        pf("%08lx  ", cur->flags);
+        pf("%12lu", (uint32_t)cur->wait_timeout);
+
+        ns_time = perf_cntr_timer_ns();
+        cpu_time = thd_get_cpu_time(cur);
+
+        pf("%12llu (%6.3lf%%)  ",
+            cpu_time, (double)cpu_time / (double)ns_time * 100.0);
+
+        pf("%-10s  ", thd_state_to_str(cur));
+        pf("%-10s\n", cur->label);
     }
     pf("--end of list--\n");
 
@@ -220,7 +229,7 @@ static void *thd_idle_task(void *param) {
 /* Reaper function. This function is here to reap old zombie threads as they are
    created. */
 static void *thd_reaper(void *param) {
-    kthread_t *thd;
+    kthread_t *thd, *tmp;
 
     (void)param;
 
@@ -230,7 +239,7 @@ static void *thd_reaper(void *param) {
 
         /* Find the first zombie thread and reap it (only do one at a time so
            that the semaphore stays current) */
-        LIST_FOREACH(thd, &thd_list, t_list) {
+        LIST_FOREACH_SAFE(thd, &thd_list, t_list, tmp) {
             if(thd->state == STATE_ZOMBIE) {
                 thd_destroy(thd);
                 break;
@@ -294,7 +303,7 @@ void thd_exit(void *rv) {
    process group of the same priority (front_of_line==0) or
    right before the process group of the same priority (front_of_line!=0).
    See thd_schedule for why this is helpful. */
-void thd_add_to_runnable(kthread_t *t, int front_of_line) {
+void thd_add_to_runnable(kthread_t *t, bool front_of_line) {
     kthread_t *i;
     int done;
 
@@ -398,7 +407,7 @@ static void *thd_create_tls_data(void) {
     assert(!((uintptr_t)tcbhead % 8)); 
 
     /* Since we aren't using either member within it, zero out tcbhead. */
-    memset(tcbhead, 0, sizeof(tcbhead_t));  
+    memset(tcbhead, 0, sizeof(tcbhead_t));
 
     /* Initialize .TDATA */
     if(tdata_size) { 
@@ -435,7 +444,7 @@ kthread_t *thd_create_ex(const kthread_attr_t *restrict attr,
     tid_t tid;
     uint32_t params[4];
     int oldirq = 0;
-    kthread_attr_t real_attr = { 0, THD_STACK_SIZE, NULL, PRIO_DEFAULT, NULL };
+    kthread_attr_t real_attr = { false, THD_STACK_SIZE, NULL, PRIO_DEFAULT, NULL };
 
     if(attr)
         real_attr = *attr;
@@ -466,6 +475,9 @@ kthread_t *thd_create_ex(const kthread_attr_t *restrict attr,
             /* Clear out potentially unused stuff */
             memset(nt, 0, sizeof(kthread_t));
 
+            /* Initialize the flags to defaults immediately. */
+            nt->flags = THD_DEFAULTS;
+
             /* Create a new thread stack */
             if(!real_attr.stack_ptr) {
                 nt->stack = (uint32_t*)malloc(real_attr.stack_size);
@@ -475,6 +487,9 @@ kthread_t *thd_create_ex(const kthread_attr_t *restrict attr,
                     irq_restore(oldirq);
                     return NULL;
                 }
+
+                /* Since we allocated the stack, we own the stack! */
+                nt->flags |= THD_OWNS_STACK;
             }
             else {
                 nt->stack = (uint32_t*)real_attr.stack_ptr;
@@ -498,7 +513,6 @@ kthread_t *thd_create_ex(const kthread_attr_t *restrict attr,
             nt->context.gbr = (uint32_t)nt->tcbhead;
             nt->tid = tid;
             nt->prio = real_attr.prio;
-            nt->flags = THD_DEFAULTS;
             nt->state = STATE_READY;
 
             if(!real_attr.label) {
@@ -538,8 +552,8 @@ kthread_t *thd_create_ex(const kthread_attr_t *restrict attr,
     return nt;
 }
 
-kthread_t *thd_create(int detach, void *(*routine)(void *), void *param) {
-    kthread_attr_t attrs = { detach, 0, 0, 0, 0 };
+kthread_t *thd_create(bool detach, void *(*routine)(void *), void *param) {
+    kthread_attr_t attrs = { detach, 0, NULL, 0, NULL };
     return thd_create_ex(&attrs, routine, param);
 }
 
@@ -556,28 +570,35 @@ int thd_destroy(kthread_t *thd) {
        and unblock them. */
     genwait_wake_all(thd);
 
-    /* De-schedule the thread if it's scheduled and free the
-       thread structure */
+    /* If this thread was waiting on something, we need to remove it from
+       genwait so that it doesn't try to notify a dead thread later. */
+    if(thd->wait_obj)
+        genwait_wake_thd(thd->wait_obj, thd, ECANCELED);
+
+    /* De-schedule the thread if it's scheduled. */
     thd_remove_from_runnable(thd);
+
+    /* Remove it from the thread list. */
     LIST_REMOVE(thd, t_list);
 
-    /* Clean up any thread-local data */
+    /* Call destructors on TLS entries.  */
     LIST_FOREACH(i, &thd->tls_list, kv_list) {
         if(i->destructor) {
             i->destructor(i->data);
         }
     }
 
+    /* Free TLS entries. */
     i = LIST_FIRST(&thd->tls_list);
-
     while(i != NULL) {
         i2 = LIST_NEXT(i, kv_list);
         free(i);
         i = i2;
     }
 
-    /* Free its stack */
-    free(thd->stack);
+    /* Free its stack (if we're managing it). */
+    if(thd->flags & THD_OWNS_STACK)
+        free(thd->stack);
 
     /* Free static TLS segment */
     free(thd->tcbhead);
@@ -613,6 +634,15 @@ int thd_set_prio(kthread_t *thd, prio_t prio) {
 /*****************************************************************************/
 /* Scheduling routines */
 
+static void thd_update_cpu_time(kthread_t *thd) {
+    const uint64_t ns = perf_cntr_timer_ns();
+
+    thd_current->cpu_time.total +=
+            ns - thd_current->cpu_time.scheduled;
+
+    thd->cpu_time.scheduled = ns;
+}
+
 /* Thread scheduler; this function will find a new thread to run when a
    context switch is requested. No work is done in here except to change
    out the thd_current variable contents. Assumed that we are in an
@@ -629,16 +659,11 @@ int thd_set_prio(kthread_t *thd, prio_t prio) {
    to make sure the priorities are all straight before returning, but you
    don't want a full context switch inside the same priority group.
 */
-void thd_schedule(int front_of_line, uint64_t now) {
-    int dontenq;
+void thd_schedule(bool front_of_line, uint64_t now) {
     kthread_t *thd;
 
     if(now == 0)
         now = timer_ms_gettime64();
-
-    /* We won't re-enqueue the current thread if it's NULL (i.e., the
-       thread blocked itself somewhere) or if it's a zombie (below) */
-    dontenq = !thd_current;
 
     /* If there's only two thread left, it's the idle task and the reaper task:
        exit the OS */
@@ -649,7 +674,7 @@ void thd_schedule(int front_of_line, uint64_t now) {
 
     /* If the current thread is supposed to be in the front of the line, and it
        did not die, re-enqueue it to the front of the line now. */
-    if(front_of_line && !dontenq && thd_current->state == STATE_RUNNING) {
+    if(front_of_line && thd_current->state == STATE_RUNNING) {
         thd_current->state = STATE_READY;
         thd_add_to_runnable(thd_current, front_of_line);
     }
@@ -668,7 +693,7 @@ void thd_schedule(int front_of_line, uint64_t now) {
 
     /* If we didn't already re-enqueue the thread and we are supposed to do so,
        do it now. */
-    if(!front_of_line && !dontenq && thd_current->state == STATE_RUNNING) {
+    if(!front_of_line && thd_current->state == STATE_RUNNING) {
         thd_current->state = STATE_READY;
         thd_add_to_runnable(thd_current, front_of_line);
 
@@ -687,6 +712,8 @@ void thd_schedule(int front_of_line, uint64_t now) {
     /* We should now have a runnable thread, so remove it from the
        run queue and switch to it. */
     thd_remove_from_runnable(thd);
+
+    thd_update_cpu_time(thd);
 
     thd_current = thd;
     _impure_ptr = &thd->thd_reent;
@@ -731,6 +758,9 @@ void thd_schedule_next(kthread_t *thd) {
     }
 
     thd_remove_from_runnable(thd);
+
+    thd_update_cpu_time(thd);
+
     thd_current = thd;
     _impure_ptr = &thd->thd_reent;
     thd_current->state = STATE_RUNNING;
@@ -773,7 +803,7 @@ static void thd_timer_hnd(irq_context_t *context) {
 /* Thread blocking based sleeping; this is the preferred way to
    sleep because it eases the load on the system for the other
    threads. */
-void thd_sleep(int ms) {
+void thd_sleep(unsigned int ms) {
     /* This should never happen. This should, perhaps, assert. */
     if(thd_mode == THD_MODE_NONE) {
         dbglog(DBG_WARNING, "thd_sleep called when threading not "
@@ -798,6 +828,7 @@ void thd_sleep(int ms) {
 }
 
 /* Manually cause a re-schedule */
+__used
 void thd_pass(void) {
     /* Makes no sense inside int */
     if(irq_inside_int()) return;
@@ -814,6 +845,10 @@ int thd_join(kthread_t *thd, void **value_ptr) {
     /* Can't scan for NULL threads */
     if(thd == NULL)
         return -1;
+
+    /* If you wait for yourself, you'll never leave */
+    if(thd == thd_current)
+        return -4;
 
     if((rv = irq_inside_int())) {
         dbglog(DBG_WARNING, "thd_join(%p) called inside an interrupt with "
@@ -931,17 +966,25 @@ struct _reent *thd_get_reent(kthread_t *thd) {
     return &thd->thd_reent;
 }
 
+uint64_t thd_get_cpu_time(kthread_t *thd) {
+    /* Check whether we should force an update immediately for accuracy. */
+    if(thd == thd_get_current())
+        thd_update_cpu_time(thd);
+
+    return thd->cpu_time.total;
+}
+
 /*****************************************************************************/
 
 /* Change threading modes */
-int thd_set_mode(int mode) {
+int thd_set_mode(kthread_mode_t mode) {
     dbglog(DBG_WARNING, "thd_set_mode() has no effect. Cooperative threading "
            "mode is deprecated. Threading is always in preemptive mode.\n");
 
     return mode;
 }
 
-int thd_get_mode(void) {
+kthread_mode_t thd_get_mode(void) {
     return thd_mode;
 }
 
@@ -966,7 +1009,7 @@ int thd_set_hz(unsigned int hertz) {
 int kthread_key_delete(kthread_key_t key) {
     int old = irq_disable();
     kthread_t *cur;
-    kthread_tls_kv_t *i;
+    kthread_tls_kv_t *i, *tmp;
 
     /* Make sure the key is valid. */
     if(key >= kthread_key_next() || key < 1) {
@@ -984,7 +1027,7 @@ int kthread_key_delete(kthread_key_t key) {
 
     /* Go through each thread searching for (and removing) the data. */
     LIST_FOREACH(cur, &thd_list, t_list) {
-        LIST_FOREACH(i, &cur->tls_list, kv_list) {
+        LIST_FOREACH_SAFE(i, &cur->tls_list, kv_list, tmp) {
             if(i->key == key) {
                 LIST_REMOVE(i, kv_list);
                 free(i);
@@ -1004,6 +1047,11 @@ int kthread_key_delete(kthread_key_t key) {
 
 /* Init */
 int thd_init(void) {
+    const kthread_attr_t kern_attr = {
+        .stack_size = THD_KERNEL_STACK_SIZE,
+        .stack_ptr  = (void *)_arch_mem_top - THD_KERNEL_STACK_SIZE,
+        .label      = "[kernel]"
+    };
     kthread_t *kern, *reaper;
 
     /* Make sure we're not already running */
@@ -1032,8 +1080,7 @@ int thd_init(void) {
     thd_count = 0;
 
     /* Setup a kernel task for the currently running "main" thread */
-    kern = thd_create(0, NULL, NULL);
-    strcpy(kern->label, "[kernel]");
+    kern = thd_create_ex(&kern_attr, NULL, NULL);
     kern->state = STATE_RUNNING;
 
     /* Initialize GBR register for Main Thread */
@@ -1059,6 +1106,8 @@ int thd_init(void) {
     thd_current = kern;
     irq_set_context(&kern->context);
 
+    thd_update_cpu_time(thd_current);
+
     /* Initialize thread sync primitives */
     genwait_init();
 
@@ -1068,26 +1117,21 @@ int thd_init(void) {
     /* Schedule our first wakeup */
     timer_primary_wakeup(thd_sched_ms);
 
-    dbglog(DBG_INFO, "thd: pre-emption enabled, HZ=%u\n", thd_get_hz());
+    dbglog(DBG_DEBUG, "thd: pre-emption enabled, HZ=%u\n", thd_get_hz());
 
     return 0;
 }
 
 /* Shutdown */
 void thd_shutdown(void) {
-    kthread_t *n1, *n2;
+    kthread_t *cur, *tmp;
 
     /* Remove our pre-emption handler */
     timer_primary_set_callback(NULL);
 
     /* Kill remaining live threads */
-    n1 = LIST_FIRST(&thd_list);
-
-    while(n1 != NULL) {
-        n2 = LIST_NEXT(n1, t_list);
-        free(n1->stack);
-        free(n1);
-        n1 = n2;
+    LIST_FOREACH_SAFE(cur, &thd_list, t_list, tmp) {
+        thd_destroy(cur);
     }
 
     sem_destroy(&thd_reap_sem);
