@@ -23,10 +23,10 @@
 /* Modified for inclusion into KOS by Megan Potter */
 
 /* Signaling semaphore */
-static semaphore_t dma_done;
-static int32_t dma_blocking;
-static pvr_dma_callback_t dma_callback;
-static void *dma_cbdata;
+static semaphore_t ta_dma_done;
+static int32_t ta_dma_blocking;
+static pvr_dma_callback_t ta_dma_callback;
+static void *ta_dma_cbdata;
 
 /* DMA registers */
 static vuint32 * const pvr_dma = (vuint32 *)0xa05f6800;
@@ -38,7 +38,7 @@ static vuint32 * const pvr_dma = (vuint32 *)0xa05f6800;
 #define PVR_LMMODE0 0x84/4
 #define PVR_LMMODE1 0x88/4
 
-static void pvr_dma_irq_hnd(uint32_t code, void *data) {
+static void ta_dma_irq_hnd(uint32_t code, void *data) {
     (void)code;
     (void)data;
 
@@ -46,23 +46,23 @@ static void pvr_dma_irq_hnd(uint32_t code, void *data) {
         dbglog(DBG_INFO, "pvr_dma: The dma did not complete successfully\n");
 
     /* Call the callback, if any. */
-    if(dma_callback) {
+    if(ta_dma_callback) {
         /* This song and dance is necessary because the handler
            could chain to itself. */
-        pvr_dma_callback_t cb = dma_callback;
-        void *d = dma_cbdata;
+        pvr_dma_callback_t cb = ta_dma_callback;
+        void *d = ta_dma_cbdata;
 
-        dma_callback = NULL;
-        dma_cbdata = 0;
+        ta_dma_callback = NULL;
+        ta_dma_cbdata = 0;
 
         cb(d);
     }
 
     /* Signal the calling thread to continue, if any. */
-    if(dma_blocking) {
-        sem_signal(&dma_done);
+    if(ta_dma_blocking) {
+        sem_signal(&ta_dma_done);
         thd_schedule(1, 0);
-        dma_blocking = 0;
+        ta_dma_blocking = 0;
     }
 }
 
@@ -106,9 +106,9 @@ int pvr_dma_transfer(void *src, uintptr_t dest, size_t count, int type,
         return -1;
     }
 
-    dma_blocking = block;
-    dma_callback = callback;
-    dma_cbdata = cbdata;
+    ta_dma_blocking = block;
+    ta_dma_callback = callback;
+    ta_dma_cbdata = cbdata;
 
     /* Make sure we're not already DMA'ing */
     if(pvr_dma[PVR_DST] != 0) {
@@ -139,7 +139,7 @@ int pvr_dma_transfer(void *src, uintptr_t dest, size_t count, int type,
 
     /* Wait for us to be signaled */
     if(block)
-        sem_wait(&dma_done);
+        sem_wait(&ta_dma_done);
 
     return 0;
 }
@@ -167,10 +167,10 @@ int pvr_dma_ready(void) {
 
 void pvr_dma_init(void) {
     /* Create an initially blocked semaphore */
-    sem_init(&dma_done, 0);
-    dma_blocking = 0;
-    dma_callback = NULL;
-    dma_cbdata = 0;
+    sem_init(&ta_dma_done, 0);
+    ta_dma_blocking = 0;
+    ta_dma_callback = NULL;
+    ta_dma_cbdata = 0;
 
     /* Use 2x32-bit TA->VRAM buses for PVR_TA_TEX_MEM */
     pvr_dma[PVR_LMMODE0] = 0;
@@ -179,8 +179,8 @@ void pvr_dma_init(void) {
     pvr_dma[PVR_LMMODE1] = 1;
 
     /* Hook the necessary interrupts */
-    asic_evt_set_handler(ASIC_EVT_PVR_DMA, pvr_dma_irq_hnd, NULL);
-    asic_evt_enable(ASIC_EVT_PVR_DMA, ASIC_IRQ_DEFAULT);
+    asic_evt_set_handler(ASIC_EVT_TA_DMA, ta_dma_irq_hnd, NULL);
+    asic_evt_enable(ASIC_EVT_TA_DMA, ASIC_IRQ_DEFAULT);
 }
 
 void pvr_dma_shutdown(void) {
@@ -190,9 +190,9 @@ void pvr_dma_shutdown(void) {
     }
 
     /* Clean up */
-    asic_evt_disable(ASIC_EVT_PVR_DMA, ASIC_IRQ_DEFAULT);
-    asic_evt_remove_handler(ASIC_EVT_PVR_DMA);
-    sem_destroy(&dma_done);
+    asic_evt_disable(ASIC_EVT_TA_DMA, ASIC_IRQ_DEFAULT);
+    asic_evt_remove_handler(ASIC_EVT_TA_DMA);
+    sem_destroy(&ta_dma_done);
 }
 
 /* Copies n bytes from src to PVR dest, dest must be 32-byte aligned */

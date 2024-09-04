@@ -1137,13 +1137,15 @@ Striplength set to 2 */
 /* We use these macros to do all PVR register access, so that it's
    simple later on to hook them for debugging or whatnot. */
 
+#define PVR_REGISTERS_BASE  0xa05f8000  /**< \brief PVR Register Base */
+
 /** \brief   Retrieve a PVR register value
 
     \param   REG             The register to fetch. See \ref pvr_regs.
     
     \return                  The value of that register (32-bits)
 */
-#define PVR_GET(REG) (* ( (vuint32*)( 0xa05f8000 + (REG) ) ) )
+#define PVR_GET(REG) (* ( (vuint32*)( PVR_REGISTERS_BASE + (REG) ) ) )
 
 /** \brief   Set a PVR register value
 
@@ -2570,6 +2572,16 @@ void *pvr_sq_set16(void *dest, uint32_t c, size_t n, int type);
 void *pvr_sq_set32(void *dest, uint32_t c, size_t n, int type);
 
 /*********************************************************************/
+
+int pvr_dma2_transfer(const void *sh4, pvr_ptr_t pvr, size_t length, uint32_t block, pvr_dma_callback_t callback, void *cbdata, uint32_t dir);
+int pvr_dma_load_txr(pvr_ptr_t dest, const void *src, size_t length, int block, pvr_dma_callback_t callback, void *cbdata);
+int pvr_dma_load_pal(pvr_ptr_t dest, const void *src, size_t length, int block, pvr_dma_callback_t callback, void *cbdata);
+int pvr_dma2_ready(void);
+void pvr_dma2_init(void);
+void pvr_dma2_shutdown(void);
+void *pvr2_sq_load(void *dest, const void *src, size_t n, int type);
+void *pvr2_sq_set16(void *dest, uint32_t c, size_t n, int type);
+void *pvr2_sq_set32(void *dest, uint32_t c, size_t n, int type);
 
 
 __END_DECLS
