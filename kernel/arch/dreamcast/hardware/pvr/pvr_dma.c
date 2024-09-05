@@ -75,7 +75,7 @@ static void ta_dma_irq_hnd(uint32_t code, void *data) {
     (void)data;
 
     if(DMAC_DMATCR2 != 0)
-        dbglog(DBG_INFO, "pvr_dma: The dma did not complete successfully\n");
+        dbglog(DBG_INFO, "ta_dma_irq_hnd: The dma did not complete successfully\n");
 
     /* Call the callback, if any. */
     if(ta_dma_callback) {
@@ -199,7 +199,7 @@ int pvr_dma_transfer(void *sh4, uintptr_t pvr, size_t count, pvr_dma_mode_t type
         ta_dma_cbdata = cbdata;
 
         /* Make sure we're not already DMA'ing */
-        if(ta_dma->dest_addr != 0) {
+        if(ta_dma->start != 0) {
             dbglog(DBG_ERROR, "ta_dma: Previous DMA has not finished\n");
             errno = EINPROGRESS;
             return -1;
