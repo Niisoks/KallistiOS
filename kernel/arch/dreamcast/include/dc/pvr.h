@@ -2355,6 +2355,24 @@ void pvr_txr_load_kimg(kos_img_t *img, pvr_ptr_t dst, uint32_t flags);
     \ingroup            pvr
 */
 
+/** \defgroup pvr_dma_modes         Transfer Modes
+    \brief                          Transfer modes with TA/PVR DMA and Store Queues
+    \ingroup  pvr_dma
+
+    @{
+*/
+typedef enum {
+    PVR_DMA_VRAM64 = 0,    /**< \brief Transfer to VRAM using TA bus */
+    PVR_DMA_VRAM32 = 1,    /**< \brief Transfer to VRAM using TA bus */
+    PVR_DMA_TA = 2,        /**< \brief Transfer to the tile accelerator */
+    PVR_DMA_YUV = 3,       /**< \brief Transfer to the YUV converter (TA) */
+    PVR_DMA_VRAM32_SB = 4, /**< \brief Transfer to/from VRAM using PVR i/f */
+    PVR_DMA_VRAM64_SB = 5, /**< \brief Transfer to/from VRAM using PVR i/f */
+    PVR_DMA_REGISTERS = 6  /**< \brief Transfer to/from PVR registers using 
+                                       PVR i/f */
+} pvr_dma_mode_t;
+/** @} */
+
 /** \brief   PVR DMA interrupt callback type.
     \ingroup pvr_dma
 
@@ -2396,22 +2414,8 @@ typedef void (*pvr_dma_callback_t)(void *data);
 
     \see    pvr_dma_modes
 */
-int pvr_dma_transfer(void *src, uintptr_t dest, size_t count, int type,
-                     int block, pvr_dma_callback_t callback, void *cbdata);
-
-/** \defgroup pvr_dma_modes         Transfer Modes
-    \brief                          Transfer modes with TA/PVR DMA and Store Queues
-    \ingroup  pvr_dma
-
-    @{
-*/
-#define PVR_DMA_VRAM64    0   /**< \brief Transfer to VRAM using TA bus */
-#define PVR_DMA_VRAM32    1   /**< \brief Transfer to VRAM using TA bus */
-#define PVR_DMA_TA        2   /**< \brief Transfer to the tile accelerator */
-#define PVR_DMA_YUV       3   /**< \brief Transfer to the YUV converter (TA) */
-#define PVR_DMA_VRAM32_SB 4   /**< \brief Transfer to/from VRAM using PVR i/f */
-#define PVR_DMA_VRAM64_SB 5   /**< \brief Transfer to/from VRAM using PVR i/f */
-/** @} */
+int pvr_dma_transfer(void *src, uintptr_t dest, size_t count, pvr_dma_mode_t type,
+                     int block, int dir, pvr_dma_callback_t callback, void *cbdata);
 
 /** \brief   Load a texture using TA DMA.
     \ingroup pvr_dma
@@ -2524,7 +2528,7 @@ void pvr_dma_shutdown(void);
 
     \sa pvr_sq_set32()
 */
-void *pvr_sq_load(void *dest, const void *src, size_t n, int type);
+void *pvr_sq_load(void *dest, const void *src, size_t n, pvr_dma_mode_t type);
 
 /** \brief   Set a block of PVR memory to a 16-bit value.
     \ingroup store_queues
@@ -2547,7 +2551,7 @@ void *pvr_sq_load(void *dest, const void *src, size_t n, int type);
 
     \sa pvr_sq_set32()
 */
-void *pvr_sq_set16(void *dest, uint32_t c, size_t n, int type);
+void *pvr_sq_set16(void *dest, uint32_t c, size_t n, pvr_dma_mode_t type);
 
 /** \brief   Set a block of PVR memory to a 32-bit value.
     \ingroup store_queues
@@ -2569,19 +2573,22 @@ void *pvr_sq_set16(void *dest, uint32_t c, size_t n, int type);
 
     \sa pvr_sq_set16
 */
-void *pvr_sq_set32(void *dest, uint32_t c, size_t n, int type);
+void *pvr_sq_set32(void *dest, uint32_t c, size_t n, pvr_dma_mode_t type);
 
 /*********************************************************************/
 
-int pvr_dma2_transfer(const void *sh4, pvr_ptr_t pvr, size_t length, uint32_t block, pvr_dma_callback_t callback, void *cbdata, uint32_t dir);
-int pvr_dma_load_txr(pvr_ptr_t dest, const void *src, size_t length, int block, pvr_dma_callback_t callback, void *cbdata);
-int pvr_dma_load_pal(pvr_ptr_t dest, const void *src, size_t length, int block, pvr_dma_callback_t callback, void *cbdata);
+/** \brief  PVR DMA direction
+
+    The direction you want the data to go. For SH4 to PVR use PVR_DMA_TO_PVR, 
+    otherwise PVR_DMA_TO_SH4.
+*/
+#define PVR_DMA_TO_PVR  0
+#define PVR_DMA_TO_SH4  1
+
+int pvr_dma_load_txr(void *sh4, pvr_ptr_t pvr, size_t count, int block, pvr_dma_callback_t callback, void *cbdata);
+int pvr_dma_download_txr(void *sh4, pvr_ptr_t pvr, size_t count, int block, pvr_dma_callback_t callback, void *cbdata);
+int pvr_dma_load_pal(void *sh4, pvr_ptr_t pvr, size_t count, int block, pvr_dma_callback_t callback, void *cbdata);
 int pvr_dma2_ready(void);
-void pvr_dma2_init(void);
-void pvr_dma2_shutdown(void);
-void *pvr2_sq_load(void *dest, const void *src, size_t n, int type);
-void *pvr2_sq_set16(void *dest, uint32_t c, size_t n, int type);
-void *pvr2_sq_set32(void *dest, uint32_t c, size_t n, int type);
 
 
 __END_DECLS
