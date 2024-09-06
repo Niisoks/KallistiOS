@@ -151,9 +151,6 @@ static uintptr_t pvr_dest_addr(pvr_ptr_t dest, pvr_dma_mode_t type) {
             break;
 
         case PVR_DMA_REGISTERS:
-            dest_addr = masked_dest | PVR_RAM_BASE_32_P0;
-            break;
-
         default:
             dest_addr = (uintptr_t)dest;
             break;
@@ -162,21 +159,21 @@ static uintptr_t pvr_dest_addr(pvr_ptr_t dest, pvr_dma_mode_t type) {
     return dest_addr;
 }
 
-int pvr_dma_transfer(void *sh4, pvr_ptr_t pvr, size_t count, pvr_dma_mode_t type,
-                    int block, pvr_dma_dir_t dir, pvr_dma_callback_t callback, void *cbdata) {
-    uintptr_t sh4_addr = (uintptr_t)sh4;
-    uintptr_t pvr_addr = (uintptr_t)pvr;
+int pvr_dma_transfer(void *src, void *dest, size_t count, pvr_dma_mode_t type,
+                    int block, pvr_dma_callback_t callback, void *cbdata) {
+    uintptr_t src_addr = (uintptr_t)src;
+    uintptr_t dest_addr = (uintptr_t)dest;
 
-    /* Check if 'sh4' is 32-byte aligned */
-    if (sh4_addr & 0x1F) {
-        dbglog(DBG_ERROR, "pvr_dma_transfer: sh4 is not 32-byte aligned\n");
+    /* Check if 'src' is 32-byte aligned */
+    if(src_addr & 0x1F) {
+        dbglog(DBG_ERROR, "pvr_dma_transfer: src is not 32-byte aligned\n");
         errno = EFAULT;
         return -1;
     }
 
-     /* Check if 'pvr' is 32-byte aligned */
-    if (pvr_addr & 0x1F) {
-        dbglog(DBG_ERROR, "pvr_dma_transfer: pvr is not 32-byte aligned\n");
+     /* Check if 'dest' is 32-byte aligned */
+    if(dest_addr & 0x1F) {
+        dbglog(DBG_ERROR, "pvr_dma_transfer: dest is not 32-byte aligned\n");
         errno = EFAULT;
         return -1;
     }
@@ -193,11 +190,20 @@ int pvr_dma_transfer(void *sh4, pvr_ptr_t pvr, size_t count, pvr_dma_mode_t type
             return -1;
         }
 
-        /* Setup PVR DMA */
-        pvr_dma->pvr_addr = pvr_addr;
-        pvr_dma->sh4_addr = sh4_addr;
+        /* Figure out which direction we are going */
+        if(((dest_addr & MEM_AREA_CACHE_MASK) >> 24) == 0x0c) {
+            /* PVR => SH4 */
+            pvr_dma->pvr_addr = src_addr;
+            pvr_dma->sh4_addr = dest_addr;
+            pvr_dma->dir = 1;
+        } else { 
+            /* SH4 => PVR */
+            pvr_dma->pvr_addr = dest_addr;
+            pvr_dma->sh4_addr = src_addr;
+            pvr_dma->dir = 0;
+        }
+
         pvr_dma->size = count;
-        pvr_dma->dir = dir;
         pvr_dma->trigger = CPU_TRIGGER;
 
         /* Start the DMA transfer */
@@ -226,7 +232,7 @@ int pvr_dma_transfer(void *sh4, pvr_ptr_t pvr, size_t count, pvr_dma_mode_t type
             DMAC_CHCR2 &= ~0x2;
 
         /* Set up DMA transfer */
-        DMAC_SAR2 = sh4_addr;
+        DMAC_SAR2 = src_addr;
         DMAC_DMATCR2 = count / 32;
         DMAC_CHCR2 = 0x12c1;
 
@@ -237,7 +243,7 @@ int pvr_dma_transfer(void *sh4, pvr_ptr_t pvr, size_t count, pvr_dma_mode_t type
         }
 
         /* Start TA DMA */
-        ta_dma->dest_addr = pvr_dest_addr(pvr, type);
+        ta_dma->dest_addr = pvr_dest_addr(dest, type);
         ta_dma->size = count;
         ta_dma->start = 1;
 
@@ -253,55 +259,57 @@ int pvr_dma_transfer(void *sh4, pvr_ptr_t pvr, size_t count, pvr_dma_mode_t type
 int pvr_txr_load_dma(void *src, pvr_ptr_t dest, size_t count, int block,
                     pvr_dma_callback_t callback, void *cbdata) {
     return pvr_dma_transfer(src, dest, count, PVR_DMA_VRAM64, block, 
-                            DIR_NA, callback, cbdata);
+                            callback, cbdata);
 }
 
 /* Uses TA DMA to load vertex data */
 int pvr_dma_load_ta(void *src, size_t count, int block, 
                     pvr_dma_callback_t callback, void *cbdata) {
     return pvr_dma_transfer(src, 0, count, PVR_DMA_TA, block, 
-                            DIR_NA, callback, cbdata);
+                            callback, cbdata);
 }
 
 /* Uses TA DMA to convert to YUV22 */
 int pvr_dma_yuv_conv(void *src, size_t count, int block,
                     pvr_dma_callback_t callback, void *cbdata) {
     return pvr_dma_transfer(src, 0, count, PVR_DMA_YUV, block, 
-                            DIR_NA, callback, cbdata);
+                            callback, cbdata);
 }
 
 /* Uses PVR DMA to load texture data */
-int pvr_dma_load_txr(void *sh4, pvr_ptr_t pvr, size_t count, int block,
+int pvr_dma_load_txr(void *src, pvr_ptr_t dest, size_t count, int block,
                     pvr_dma_callback_t callback, void *cbdata) {
-    return pvr_dma_transfer(sh4, pvr, count, PVR_DMA_VRAM64_SB, block, 
-                            PVR_DMA_TO_PVR, callback, cbdata);
+    return pvr_dma_transfer(src, dest, count, PVR_DMA_VRAM64_SB, block, 
+                            callback, cbdata);
 }
 
 /* Uses PVR DMA to download texture data */
-int pvr_dma_download_txr(void *sh4, pvr_ptr_t pvr, size_t count, int block,
+int pvr_dma_download_txr(pvr_ptr_t src, void *dest, size_t count, int block,
                     pvr_dma_callback_t callback, void *cbdata) {
-    return pvr_dma_transfer(sh4, pvr, count, PVR_DMA_VRAM64_SB, block, 
-                            PVR_DMA_TO_SH4, callback, cbdata);
+    return pvr_dma_transfer(src, dest, count, PVR_DMA_VRAM64_SB, block, 
+                            callback, cbdata);
 }
 
 /* Uses PVR DMA to load palette data */
-int pvr_dma_load_pal(void *sh4, pvr_ptr_t pvr, size_t count, int block,
+int pvr_dma_load_pal(void *src, uint32_t idx, size_t count, int block,
                     pvr_dma_callback_t callback, void *cbdata) {
-    return pvr_dma_transfer(sh4, pvr, count, PVR_DMA_REGISTERS, block, 
-                            PVR_DMA_TO_PVR, callback, cbdata);
-}
 
+    return pvr_dma_transfer(src, 0, count, PVR_DMA_REGISTERS, block, 
+                            callback, cbdata);
+}
 
 /* Uses PVR DMA to load fog data */
 int pvr_dma_load_fog(void *sh4, pvr_ptr_t pvr, size_t count, int block,
                     pvr_dma_callback_t callback, void *cbdata) {
     return pvr_dma_transfer(sh4, pvr, count, PVR_DMA_REGISTERS, block, 
-                            PVR_DMA_TO_PVR, callback, cbdata);
+                           callback, cbdata);
 }
 
-int pvr_dma_ready(dma_type_t dma) {
-    return (dma == DMA_TA) ? ta_dma->start == 0 : pvr_dma->start == 0;
+int pvr_dma_ready() {
+    return ta_dma->start == 0;
 }
+
+//: pvr_dma->start == 0;
 
 void pvr_dma_init(void) {
     /* Create an initially blocked semaphore */
