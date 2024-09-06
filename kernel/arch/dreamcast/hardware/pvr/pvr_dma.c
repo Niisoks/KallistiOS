@@ -40,13 +40,13 @@ static void *ta_dma_cbdata;
 
 /* PVR DMA Registers */
 typedef struct {
-    uintptr_t  pvr_addr;       /* PVR address */
-    uintptr_t  sh4_addr;       /* SH-4 address */
-    size_t     size;           /* Size in bytes; Must be a multiple of 32 */
-    uint32_t   dir;            /* 0: sh4->PVR; 1: PVR->sh4 */
-    uint32_t   trigger_select; /* DMA trigger select; 0-CPU, 1-HW */
-    uint32_t   enable;         /* DMA enable */
-    uint32_t   start;          /* DMA start */
+    uintptr_t  pvr_addr;  /* PVR address */
+    uintptr_t  sh4_addr;  /* SH-4 address */
+    size_t     size;      /* Size in bytes; Must be a multiple of 32 */
+    uint32_t   dir;       /* 0: sh4->PVR; 1: PVR->sh4 */
+    uint32_t   trigger;   /* DMA trigger select; 0-CPU, 1-HW */
+    uint32_t   enable;    /* DMA enable */
+    uint32_t   start;     /* DMA start */
 } pvr_dma_ctrl_t;
 
 #define PVR_DMA_REG_BASE 0xa05f7c00
@@ -67,9 +67,6 @@ static void *pvr_dma_cbdata;
 /* All PVR memory protection values. */
 #define PVR_DMA_UNLOCK_ALLMEM  (PVR_DMA_UNLOCK_CODE << 16 | 0x007F)
 #define PVR_DMA_LOCK_ALLMEM    (PVR_DMA_UNLOCK_CODE << 16 | 0x7F00)
-
-/* For TA DMA, direction of DMA doesnt apply. Its always SH4 => TA. */
-#define DIR_NA 0
 
 static void ta_dma_irq_hnd(uint32_t code, void *data) {
     (void)code;
@@ -166,7 +163,7 @@ static uintptr_t pvr_dest_addr(uintptr_t dest, pvr_dma_mode_t type) {
 }
 
 int pvr_dma_transfer(void *sh4, uintptr_t pvr, size_t count, pvr_dma_mode_t type,
-                     int block, int dir, pvr_dma_callback_t callback, void *cbdata) {
+                    int block, int dir, pvr_dma_callback_t callback, void *cbdata) {
     uintptr_t src_addr;
 
     if(type >= PVR_DMA_VRAM32_SB) {
@@ -186,7 +183,7 @@ int pvr_dma_transfer(void *sh4, uintptr_t pvr, size_t count, pvr_dma_mode_t type
         pvr_dma->sh4_addr = (uintptr_t)sh4;
         pvr_dma->size = count;
         pvr_dma->dir = dir;
-        pvr_dma->trigger_select = CPU_TRIGGER;
+        pvr_dma->trigger = CPU_TRIGGER;
 
         /* Start the DMA transfer */
         pvr_dma->enable = 1;         
@@ -246,7 +243,6 @@ int pvr_dma_transfer(void *sh4, uintptr_t pvr, size_t count, pvr_dma_mode_t type
     return 0;
 }
 
-/* Count is in bytes. */
 int pvr_txr_load_dma(void *src, pvr_ptr_t dest, size_t count, int block,
                     pvr_dma_callback_t callback, void *cbdata) {
     return pvr_dma_transfer(src, (uintptr_t)dest, count, PVR_DMA_VRAM64, block, 
@@ -282,13 +278,8 @@ int pvr_dma_load_pal(void *sh4, pvr_ptr_t pvr, size_t count, int block,
     return pvr_dma_transfer(sh4, (uintptr_t)pvr, count, PVR_DMA_REGISTERS, block, 
                             PVR_DMA_TO_PVR, callback, cbdata);
 }
-
-int pvr_dma_ready(void) {
-    return ta_dma->start == 0;
-}
-
-int pvr_dma2_ready(void) {
-    return pvr_dma->start == 0;
+int pvr_dma_ready(dma_type_t dma) {
+    return (dma == DMA_TA) ? ta_dma->start == 0 : pvr_dma->start == 0;
 }
 
 void pvr_dma_init(void) {
@@ -342,19 +333,16 @@ void pvr_dma_shutdown(void) {
 }
 
 static int check_dma_state(pvr_dma_mode_t type, const char *func_name) {
-    if (type >= PVR_DMA_VRAM32_SB) {
-        if (pvr_dma->start != 0) {
-            dbglog(DBG_ERROR, "%s: PVR DMA has not finished\n", func_name);
-            errno = EINPROGRESS;
-            return -1;
-        }
-    } else {
-        if (ta_dma->start != 0) {
-            dbglog(DBG_ERROR, "%s: TA DMA has not finished\n", func_name);
-            errno = EINPROGRESS;
-            return -1;
-        }
+    if(type >= PVR_DMA_VRAM32_SB && pvr_dma->start != 0) {
+        dbglog(DBG_ERROR, "%s: PVR DMA has not finished\n", func_name);
+        errno = EINPROGRESS;
+        return -1;
+    } else if(ta_dma->start != 0) {
+        dbglog(DBG_ERROR, "%s: TA DMA has not finished\n", func_name);
+        errno = EINPROGRESS;
+        return -1;
     }
+
     return 0;
 }
 
