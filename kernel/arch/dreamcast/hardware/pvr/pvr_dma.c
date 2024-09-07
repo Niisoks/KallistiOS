@@ -161,8 +161,8 @@ static uintptr_t pvr_dest_addr(pvr_ptr_t dest, pvr_dma_mode_t type) {
 
 int pvr_dma_transfer(void *src, void *dest, size_t count, pvr_dma_mode_t type,
                     int block, pvr_dma_callback_t callback, void *cbdata) {
-    uintptr_t src_addr = (uintptr_t)src;
-    uintptr_t dest_addr = (uintptr_t)dest;
+    uintptr_t src_addr = ((uintptr_t)src) & MEM_AREA_CACHE_MASK;
+    uintptr_t dest_addr = ((uintptr_t)dest) & MEM_AREA_CACHE_MASK;
 
     /* Check if 'src' is 32-byte aligned */
     if(src_addr & 0x1F) {
@@ -191,7 +191,7 @@ int pvr_dma_transfer(void *src, void *dest, size_t count, pvr_dma_mode_t type,
         }
 
         /* Figure out which direction we are going */
-        if(((dest_addr & MEM_AREA_CACHE_MASK) >> 24) == 0x0c) {
+        if((dest_addr >> 24) == 0x0c) {
             /* PVR => SH4 */
             pvr_dma->pvr_addr = src_addr;
             pvr_dma->sh4_addr = dest_addr;
@@ -213,7 +213,8 @@ int pvr_dma_transfer(void *src, void *dest, size_t count, pvr_dma_mode_t type,
         /* Block if necessary */
         if(block)
             sem_wait(&pvr_dma_done);
-    } else {
+    } 
+    else {
         ta_dma_blocking = block;
         ta_dma_callback = callback;
         ta_dma_cbdata = cbdata;
@@ -290,26 +291,20 @@ int pvr_dma_download_txr(pvr_ptr_t src, void *dest, size_t count, int block,
                             callback, cbdata);
 }
 
-/* Uses PVR DMA to load palette data */
-int pvr_dma_load_pal(void *src, uint32_t idx, size_t count, int block,
-                    pvr_dma_callback_t callback, void *cbdata) {
-
-    return pvr_dma_transfer(src, 0, count, PVR_DMA_REGISTERS, block, 
-                            callback, cbdata);
-}
-
-/* Uses PVR DMA to load fog data */
-int pvr_dma_load_fog(void *sh4, pvr_ptr_t pvr, size_t count, int block,
-                    pvr_dma_callback_t callback, void *cbdata) {
-    return pvr_dma_transfer(sh4, pvr, count, PVR_DMA_REGISTERS, block, 
-                           callback, cbdata);
-}
-
 int pvr_dma_ready() {
+    dbglog(DBG_WARNING, "Checking TA DMA with deprecated pvr_dma_ready(). "
+          "Please update your code!\n");
+
     return ta_dma->start == 0;
 }
 
-//: pvr_dma->start == 0;
+int pvr_dma_ta_ready() {
+    return ta_dma->start == 0;
+}
+
+int pvr_dma_rb_ready() {
+    return pvr_dma->start == 0;
+}
 
 void pvr_dma_init(void) {
     /* Create an initially blocked semaphore */
@@ -366,7 +361,8 @@ static int check_dma_state(pvr_dma_mode_t type, const char *func_name) {
         dbglog(DBG_ERROR, "%s: PVR DMA has not finished\n", func_name);
         errno = EINPROGRESS;
         return -1;
-    } else if(ta_dma->start != 0) {
+    } 
+    else if(ta_dma->start != 0) {
         dbglog(DBG_ERROR, "%s: TA DMA has not finished\n", func_name);
         errno = EINPROGRESS;
         return -1;
