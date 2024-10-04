@@ -45,12 +45,13 @@ list(APPEND CMAKE_MODULE_PATH $ENV{KOS_BASE}/utils/cmake)
 set(CMAKE_SYSTEM_NAME Dreamcast)
 set(CMAKE_SYSTEM_VERSION 1)
 set(CMAKE_SYSTEM_PROCESSOR SH4)
+set(CMAKE_SIZEOF_VOID_P 4)
 set(PLATFORM_DREAMCAST TRUE)
 
 ##### Configure Cross-Compiler #####
 set(CMAKE_CROSSCOMPILING TRUE)
 
-set(CMAKE_ASM_COMPILER    ${KOS_BASE}/utils/build_wrappers/kos-as)
+set(CMAKE_ASM_COMPILER    ${KOS_BASE}/utils/build_wrappers/kos-cc)
 set(CMAKE_C_COMPILER      ${KOS_BASE}/utils/build_wrappers/kos-cc)
 set(CMAKE_CXX_COMPILER    ${KOS_BASE}/utils/build_wrappers/kos-c++)
 set(CMAKE_OBJC_COMPILER   ${KOS_BASE}/utils/build_wrappers/kos-cc)

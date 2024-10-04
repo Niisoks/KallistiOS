@@ -16,6 +16,8 @@
 #include <assert.h>
 #include <reent.h>
 #include <errno.h>
+#include <stdalign.h>
+
 #include <kos/thread.h>
 #include <kos/dbgio.h>
 #include <kos/sem.h>
@@ -49,6 +51,10 @@ extern long _tdata_align, _tbss_align;
 static inline size_t align_to(size_t address, size_t alignment) {
     return (address + (alignment - 1)) & ~(alignment - 1);
 }
+
+/* Builtin background thread data */
+static alignas(8) uint8_t thd_reaper_stack[512];
+static alignas(8) uint8_t thd_idle_stack[64];
 
 /*****************************************************************************/
 /* Thread scheduler data */
@@ -407,7 +413,7 @@ static void *thd_create_tls_data(void) {
     assert(!((uintptr_t)tcbhead % 8)); 
 
     /* Since we aren't using either member within it, zero out tcbhead. */
-    memset(tcbhead, 0, sizeof(tcbhead_t));  
+    memset(tcbhead, 0, sizeof(tcbhead_t));
 
     /* Initialize .TDATA */
     if(tdata_size) { 
@@ -443,8 +449,7 @@ kthread_t *thd_create_ex(const kthread_attr_t *restrict attr,
     kthread_t *nt = NULL;
     tid_t tid;
     uint32_t params[4];
-    int oldirq = 0;
-    kthread_attr_t real_attr = { 0, THD_STACK_SIZE, NULL, PRIO_DEFAULT, NULL };
+    kthread_attr_t real_attr = { false, THD_STACK_SIZE, NULL, PRIO_DEFAULT, NULL };
 
     if(attr)
         real_attr = *attr;
@@ -462,7 +467,7 @@ kthread_t *thd_create_ex(const kthread_attr_t *restrict attr,
     if(!real_attr.prio)
         real_attr.prio = PRIO_DEFAULT;
 
-    oldirq = irq_disable();
+    irq_disable_scoped();
 
     /* Get a new thread id */
     tid = thd_next_free();
@@ -475,15 +480,20 @@ kthread_t *thd_create_ex(const kthread_attr_t *restrict attr,
             /* Clear out potentially unused stuff */
             memset(nt, 0, sizeof(kthread_t));
 
+            /* Initialize the flags to defaults immediately. */
+            nt->flags = THD_DEFAULTS;
+
             /* Create a new thread stack */
             if(!real_attr.stack_ptr) {
                 nt->stack = (uint32_t*)malloc(real_attr.stack_size);
 
                 if(!nt->stack) {
                     free(nt);
-                    irq_restore(oldirq);
                     return NULL;
                 }
+
+                /* Since we allocated the stack, we own the stack! */
+                nt->flags |= THD_OWNS_STACK;
             }
             else {
                 nt->stack = (uint32_t*)real_attr.stack_ptr;
@@ -507,11 +517,10 @@ kthread_t *thd_create_ex(const kthread_attr_t *restrict attr,
             nt->context.gbr = (uint32_t)nt->tcbhead;
             nt->tid = tid;
             nt->prio = real_attr.prio;
-            nt->flags = THD_DEFAULTS;
             nt->state = STATE_READY;
 
             if(!real_attr.label) {
-                strcpy(nt->label, "[un-named kernel thread]");
+                strcpy(nt->label, "unnamed");
             }
             else {
                 strncpy(nt->label, real_attr.label, 255);
@@ -543,50 +552,55 @@ kthread_t *thd_create_ex(const kthread_attr_t *restrict attr,
         }
     }
 
-    irq_restore(oldirq);
     return nt;
 }
 
 kthread_t *thd_create(bool detach, void *(*routine)(void *), void *param) {
-    kthread_attr_t attrs = { detach, 0, 0, 0, 0 };
+    kthread_attr_t attrs = { detach, 0, NULL, 0, NULL };
     return thd_create_ex(&attrs, routine, param);
 }
 
 /* Given a thread id, this function removes the thread from
    the execution chain. */
 int thd_destroy(kthread_t *thd) {
-    int oldirq = 0;
     kthread_tls_kv_t *i, *i2;
 
     /* Make sure there are no ints */
-    oldirq = irq_disable();
+    irq_disable_scoped();
 
     /* If any threads were waiting on this one, then go ahead
        and unblock them. */
     genwait_wake_all(thd);
 
-    /* De-schedule the thread if it's scheduled and free the
-       thread structure */
+    /* If this thread was waiting on something, we need to remove it from
+       genwait so that it doesn't try to notify a dead thread later. */
+    if(thd->wait_obj)
+        genwait_wake_thd(thd->wait_obj, thd, ECANCELED);
+
+    /* De-schedule the thread if it's scheduled. */
     thd_remove_from_runnable(thd);
+
+    /* Remove it from the thread list. */
     LIST_REMOVE(thd, t_list);
 
-    /* Clean up any thread-local data */
+    /* Call destructors on TLS entries.  */
     LIST_FOREACH(i, &thd->tls_list, kv_list) {
         if(i->destructor) {
             i->destructor(i->data);
         }
     }
 
+    /* Free TLS entries. */
     i = LIST_FIRST(&thd->tls_list);
-
     while(i != NULL) {
         i2 = LIST_NEXT(i, kv_list);
         free(i);
         i = i2;
     }
 
-    /* Free its stack */
-    free(thd->stack);
+    /* Free its stack (if we're managing it). */
+    if(thd->flags & THD_OWNS_STACK)
+        free(thd->stack);
 
     /* Free static TLS segment */
     free(thd->tcbhead);
@@ -596,9 +610,6 @@ int thd_destroy(kthread_t *thd) {
 
     /* Remove it from the count */
     --thd_count;
-
-    /* Put ints back the way they were */
-    irq_restore(oldirq);
 
     return 0;
 }
@@ -648,15 +659,10 @@ static void thd_update_cpu_time(kthread_t *thd) {
    don't want a full context switch inside the same priority group.
 */
 void thd_schedule(bool front_of_line, uint64_t now) {
-    int dontenq;
     kthread_t *thd;
 
     if(now == 0)
         now = timer_ms_gettime64();
-
-    /* We won't re-enqueue the current thread if it's NULL (i.e., the
-       thread blocked itself somewhere) or if it's a zombie (below) */
-    dontenq = !thd_current;
 
     /* If there's only two thread left, it's the idle task and the reaper task:
        exit the OS */
@@ -667,7 +673,7 @@ void thd_schedule(bool front_of_line, uint64_t now) {
 
     /* If the current thread is supposed to be in the front of the line, and it
        did not die, re-enqueue it to the front of the line now. */
-    if(front_of_line && !dontenq && thd_current->state == STATE_RUNNING) {
+    if(front_of_line && thd_current->state == STATE_RUNNING) {
         thd_current->state = STATE_READY;
         thd_add_to_runnable(thd_current, front_of_line);
     }
@@ -686,7 +692,7 @@ void thd_schedule(bool front_of_line, uint64_t now) {
 
     /* If we didn't already re-enqueue the thread and we are supposed to do so,
        do it now. */
-    if(!front_of_line && !dontenq && thd_current->state == STATE_RUNNING) {
+    if(!front_of_line && thd_current->state == STATE_RUNNING) {
         thd_current->state = STATE_READY;
         thd_add_to_runnable(thd_current, front_of_line);
 
@@ -821,6 +827,7 @@ void thd_sleep(unsigned int ms) {
 }
 
 /* Manually cause a re-schedule */
+__used
 void thd_pass(void) {
     /* Makes no sense inside int */
     if(irq_inside_int()) return;
@@ -831,12 +838,16 @@ void thd_pass(void) {
 
 /* Wait for a thread to exit */
 int thd_join(kthread_t *thd, void **value_ptr) {
-    int old, rv;
     kthread_t * t = NULL;
+    int rv;
 
     /* Can't scan for NULL threads */
     if(thd == NULL)
         return -1;
+
+    /* If you wait for yourself, you'll never leave */
+    if(thd == thd_current)
+        return -4;
 
     if((rv = irq_inside_int())) {
         dbglog(DBG_WARNING, "thd_join(%p) called inside an interrupt with "
@@ -845,7 +856,7 @@ int thd_join(kthread_t *thd, void **value_ptr) {
         return -1;
     }
 
-    old = irq_disable();
+    irq_disable_scoped();
 
     /* Search the thread list and make sure that this thread hasn't
        already died and been deallocated. */
@@ -878,20 +889,19 @@ int thd_join(kthread_t *thd, void **value_ptr) {
         thd_destroy(thd);
     }
 
-    irq_restore(old);
     return rv;
 }
 
 /* Detach a joinable thread */
 int thd_detach(kthread_t *thd) {
-    int old, rv = 0;
     kthread_t * t = NULL;
+    int rv = 0;
 
     /* Can't scan for NULL threads */
     if(thd == NULL)
         return -1;
 
-    old = irq_disable();
+    irq_disable_scoped();
 
     /* Search the thread list and make sure that this thread hasn't
        already died and been deallocated. */
@@ -917,7 +927,6 @@ int thd_detach(kthread_t *thd) {
         thd->flags |= THD_DETACHED;
     }
 
-    irq_restore(old);
     return rv;
 }
 
@@ -995,20 +1004,19 @@ int thd_set_hz(unsigned int hertz) {
    XXXX: This should really be in tls.c, but we need the list of threads to go
    through, so it ends up here instead. */
 int kthread_key_delete(kthread_key_t key) {
-    int old = irq_disable();
     kthread_t *cur;
     kthread_tls_kv_t *i, *tmp;
 
+    irq_disable_scoped();
+
     /* Make sure the key is valid. */
     if(key >= kthread_key_next() || key < 1) {
-        irq_restore(old);
         errno = EINVAL;
         return -1;
     }
 
     /* Make sure we can actually use free below. */
     if(!malloc_irq_safe()) {
-        irq_restore(old);
         errno = EPERM;
         return -1;
     }
@@ -1026,7 +1034,6 @@ int kthread_key_delete(kthread_key_t key) {
 
     kthread_key_delete_destructor(key);
 
-    irq_restore(old);
     return 0;
 }
 
@@ -1035,7 +1042,27 @@ int kthread_key_delete(kthread_key_t key) {
 
 /* Init */
 int thd_init(void) {
-    kthread_t *kern, *reaper;
+    const kthread_attr_t kern_attr = {
+        .stack_size = THD_KERNEL_STACK_SIZE,
+        .stack_ptr  = (void *)_arch_mem_top - THD_KERNEL_STACK_SIZE,
+        .label      = "[kernel]"
+    };
+
+    const kthread_attr_t reaper_attr = {
+        .stack_size = sizeof(thd_reaper_stack),
+        .stack_ptr  = thd_reaper_stack,
+        .prio       = 1,
+        .label      = "[reaper]"
+    };
+
+    const kthread_attr_t idle_attr = {
+        .stack_size = sizeof(thd_idle_stack),
+        .stack_ptr  = thd_idle_stack,
+        .prio       = PRIO_MAX,
+        .label      = "[idle]"
+    };
+
+    kthread_t *kern;
 
     /* Make sure we're not already running */
     if(thd_mode != THD_MODE_NONE)
@@ -1063,8 +1090,7 @@ int thd_init(void) {
     thd_count = 0;
 
     /* Setup a kernel task for the currently running "main" thread */
-    kern = thd_create(0, NULL, NULL);
-    strcpy(kern->label, "[kernel]");
+    kern = thd_create_ex(&kern_attr, NULL, NULL);
     kern->state = STATE_RUNNING;
 
     /* Initialize GBR register for Main Thread */
@@ -1075,16 +1101,12 @@ int thd_init(void) {
 
     /* Setup an idle task that is always ready to run, in case everyone
        else is blocked on something. */
-    thd_idle_thd = thd_create(0, thd_idle_task, NULL);
-    strcpy(thd_idle_thd->label, "[idle]");
-    thd_set_prio(thd_idle_thd, PRIO_MAX);
+    thd_idle_thd = thd_create_ex(&idle_attr, thd_idle_task, NULL);
     thd_idle_thd->state = STATE_READY;
 
     /* Set up a thread to reap old zombies */
     sem_init(&thd_reap_sem, 0);
-    reaper = thd_create(0, thd_reaper, NULL);
-    strcpy(reaper->label, "[reaper]");
-    thd_set_prio(reaper, 1);
+    thd_create_ex(&reaper_attr, thd_reaper, NULL);
 
     /* Main thread -- the kern thread */
     thd_current = kern;
@@ -1115,7 +1137,8 @@ void thd_shutdown(void) {
 
     /* Kill remaining live threads */
     LIST_FOREACH_SAFE(cur, &thd_list, t_list, tmp) {
-        thd_destroy(cur);
+        if(cur->tid != 1)
+            thd_destroy(cur);
     }
 
     sem_destroy(&thd_reap_sem);

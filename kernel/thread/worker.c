@@ -29,7 +29,7 @@ static void *thd_worker_thread(void *d) {
     for (;;) {
         flags = irq_disable();
 
-        if (!worker->pending)
+        if ((!worker->pending) && (!worker->quit))
             genwait_wait(worker, worker->thd->label, 0, NULL);
 
         irq_restore(flags);
@@ -41,6 +41,7 @@ static void *thd_worker_thread(void *d) {
         worker->routine(worker->data);
     }
 
+    free(worker);
     return NULL;
 }
 
@@ -76,26 +77,29 @@ kthread_worker_t *thd_worker_create_ex(const kthread_attr_t *attr,
 }
 
 void thd_worker_wakeup(kthread_worker_t *worker) {
+    assert(worker != NULL);
+
+    irq_disable_scoped();
+
+    worker->pending = true;
+    genwait_wake_one(worker);
+}
+
+void thd_worker_destroy(kthread_worker_t *worker) {
     uint32_t flags;
+    kthread_t *thd;
 
     assert(worker != NULL);
 
     flags = irq_disable();
 
-    worker->pending = true;
-    genwait_wake_one(worker);
-
-    irq_restore(flags);
-}
-
-void thd_worker_destroy(kthread_worker_t *worker) {
-    assert(worker != NULL);
-
     worker->quit = true;
     genwait_wake_one(worker);
+    thd = worker->thd;
 
-    thd_join(worker->thd, NULL);
-    free(worker);
+    irq_restore(flags);
+
+    thd_join(thd, NULL);
 }
 
 kthread_t *thd_worker_get_thread(kthread_worker_t *worker) {
@@ -103,21 +107,18 @@ kthread_t *thd_worker_get_thread(kthread_worker_t *worker) {
 }
 
 void thd_worker_add_job(kthread_worker_t *worker, kthread_job_t *job) {
-    int flags = irq_disable();
+    irq_disable_scoped();
 
     STAILQ_INSERT_TAIL(&worker->jobs, job, entry);
-
-    irq_restore(flags);
 }
 
 kthread_job_t *thd_worker_dequeue_job(kthread_worker_t *worker) {
     kthread_job_t *job;
-    int flags = irq_disable();
+
+    irq_disable_scoped();
 
     job = STAILQ_FIRST(&worker->jobs);
     STAILQ_REMOVE_HEAD(&worker->jobs, entry);
-
-    irq_restore(flags);
 
     return job;
 }
