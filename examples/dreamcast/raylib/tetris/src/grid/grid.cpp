@@ -1,7 +1,16 @@
+/* KallistiOS ##version##
+
+   examples/dreamcast/raylib/tetris/src/grid/grid.cpp
+   Copyright (C) 2024 Cole Hall
+
+*/
+
 #include "grid.h"
-#include <kos.h>
 #include "../colors/colors.h"
 #include "../constants/constants.h"
+#include <iostream>
+
+#include <kos.h>
 
 Grid::Grid(){
     numRows = 20;
@@ -23,9 +32,9 @@ void Grid::Print(){
     printf("Printing Grid");
     for(int row =0; row < numRows; row++){
         for(int column = 0; column < numCols; column++){
-            printf("%d ", grid[row][column]);
+            std::cout << grid[row][column] << " ";
         }
-        printf("\n");
+        std::cout << std::endl;
     }
 }
 
@@ -39,11 +48,9 @@ void Grid::Draw(){
                 cellSize - 1, 
                 cellSize - 1, 
                 colors[cellValue]
-                );
+            );
         }
-        
     }
-    
 }
 
 bool Grid::IsCellOutside(int row, int column){
@@ -53,8 +60,7 @@ bool Grid::IsCellOutside(int row, int column){
     return true;
 }
 
-bool Grid::isCellEmpty(int row, int column)
-{
+bool Grid::isCellEmpty(int row, int column){
     if(grid[row][column] == 0){
         return true;
     }
@@ -91,10 +97,8 @@ void Grid::ClearRow(int row){
 }
 
 void Grid::MoveRowDown(int row, int numRows){
-    for (int column = 0; column < numCols; column++)
-    {
+    for (int column = 0; column < numCols; column++){
         grid[row + numRows][column] = grid[row][column];
         grid[row][column] = 0;
     }
-    
 }

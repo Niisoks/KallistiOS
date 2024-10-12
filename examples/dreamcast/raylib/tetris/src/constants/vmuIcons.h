@@ -1,3 +1,10 @@
+/* KallistiOS ##version##
+
+   examples/dreamcast/raylib/tetris/src/constants/vmuIcons.h
+   Copyright (C) 2024 Cole Hall
+
+*/
+
 #pragma once
 
 extern const char *vmuI;
