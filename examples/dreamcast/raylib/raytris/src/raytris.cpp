@@ -41,7 +41,7 @@ int main(){
     const int screenHeight = 480;
     wav_stream_hnd_t bgm;
 
-    InitWindow(screenWidth, screenHeight, "Tetris in KOS!");
+    InitWindow(screenWidth, screenHeight, "Block stacking puzzle game in KOS!");
     SetTargetFPS(60);
 
     snd_stream_init();

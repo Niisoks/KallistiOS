@@ -1,5 +1,5 @@
-TARGET = tetris.elf
-OBJS = src/tetris.o romdisk.o src/grid/grid.o src/colors/colors.o src/position/position.o src/blocks/block.o src/constants/vmuIcons.o src/game/game.o src/sound/soundManager.o src/vmu/vmuManager.o
+TARGET = raytris.elf
+OBJS = src/raytris.o romdisk.o src/grid/grid.o src/colors/colors.o src/position/position.o src/blocks/block.o src/constants/vmuIcons.o src/game/game.o src/sound/soundManager.o src/vmu/vmuManager.o
 KOS_ROMDISK_DIR = romdisk
 
 KOS_CFLAGS += -I${KOS_PORTS}/include/raylib

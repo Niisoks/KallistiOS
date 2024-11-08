@@ -109,7 +109,7 @@ This page serves as an index for all KallistiOS examples.
   - multi-stream
   - sfx
 - raylib
-  - tetris
+  - raytris
 - tsunami
   - banner
   - font
