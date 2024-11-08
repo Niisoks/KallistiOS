@@ -1,3 +1,8 @@
+/* KallistiOS ##version##
+   examples/dreamcast/raylib/raytris/src/vmu/vmuManager.h
+   Copyright (C) 2024 Cole Hall
+*/
+
 #pragma once
 
 #include <dc/maple/vmu.h>
@@ -6,9 +11,6 @@
 class VmuManager {
 public:
     VmuManager();
-    ~VmuManager();
     void displayImage(const char *xmp);
     void resetImage();
-
-private:
 };

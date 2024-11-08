@@ -1,3 +1,8 @@
+/* KallistiOS ##version##
+   examples/dreamcast/raylib/tetris/src/blocks/blocks.cpp
+   Copyright (C) 2024 Cole Hall
+*/
+
 #include "block.h"
 #include "../position/position.h"
 #include "../constants/vmuIcons.h"

@@ -1,3 +1,8 @@
+/* KallistiOS ##version##
+   examples/dreamcast/raylib/raytris/src/colors/colors.cpp
+   Copyright (C) 2024 Cole Hall
+*/
+
 #include "colors.h"
 
 const Color darkGrey = {26, 31, 40, 255};

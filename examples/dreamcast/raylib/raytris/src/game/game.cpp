@@ -1,3 +1,8 @@
+/* KallistiOS ##version##
+   examples/dreamcast/raylib/raytris/src/game/game.cpp
+   Copyright (C) 2024 Cole Hall
+*/
+
 #include "game.h"
 #include "../constants/constants.h"
 #include <random>
@@ -55,7 +60,7 @@ void Game::Draw(){
     currentBlock.Draw(Constants::gridOffset, 11);
 }
 
-void Game::DrawBlockAtPosition(Block& block, int offsetX, int offsetY, int offsetXAdjustment, int offsetYAdjustment) {
+void Game::DrawBlockAtPosition(Block& block, int offsetX, int offsetY, int offsetXAdjustment, int offsetYAdjustment){
     if (block.id == -1) return;
     if (block.id == 3 || block.id == 4) {
         block.Draw(offsetX + offsetXAdjustment, offsetY + offsetYAdjustment);
@@ -64,85 +69,102 @@ void Game::DrawBlockAtPosition(Block& block, int offsetX, int offsetY, int offse
     }
 }
 
-void Game::DrawHeld(int offsetX, int offsetY) {
+void Game::DrawHeld(int offsetX, int offsetY){
     DrawBlockAtPosition(heldBlock, offsetX, offsetY, -15, 0);
 }
 
-void Game::DrawNext(int offsetX, int offsetY) {
+void Game::DrawNext(int offsetX, int offsetY){
     DrawBlockAtPosition(nextBlock, offsetX, offsetY, -15, 10);
 }
 
-void Game::HandleInput() {
-    if ((cont = maple_enum_type(0, MAPLE_FUNC_CONTROLLER)) != NULL) {
-        state = (cont_state_t *)maple_dev_status(cont);
+bool Game::Running(){
+    return running;
+}
 
-        if (state == NULL) {
+void Game::HandleInput(){
+    // Assuming gamepad 0 is the primary controller
+    if(IsGamepadAvailable(0)){
+        bool dpadLeftPressed = IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_LEFT);
+        bool dpadRightPressed = IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_RIGHT);
+        bool dpadDownPressed = IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_DOWN);
+        bool dpadUpPressed = IsGamepadButtonPressed(0, GAMEPAD_BUTTON_LEFT_FACE_UP);
+        bool startPressed = IsGamepadButtonPressed(0, GAMEPAD_BUTTON_MIDDLE_RIGHT);
+        bool bPressed = IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT);
+        bool xPressed = IsGamepadButtonPressed(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT);
+        // ButtonDown is easier to detect for all buttons to held for exit combo
+        bool startHeld = IsGamepadButtonDown(0, GAMEPAD_BUTTON_MIDDLE_RIGHT);
+        bool aHeld = IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_FACE_DOWN);
+        bool bHeld = IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT);
+        bool xHeld = IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_FACE_LEFT);
+        bool yHeld = IsGamepadButtonDown(0, GAMEPAD_BUTTON_RIGHT_FACE_UP);
+
+        // Exit combo
+        if(startHeld && aHeld && bHeld && xHeld && yHeld){
+            running = false;
             return;
         }
 
-        uint16_t just_pressed = state->buttons & ~prev_buttons;
-
-        double currentTime = GetTime();  
-        prev_buttons = state->buttons; 
-
-        switch (just_pressed) {
-            case CONT_START:
-                if(gameOver){
-                    gameOver = false;
-                    Reset();
-                }
-                break;
-
-            case CONT_DPAD_LEFT:
-                MoveBlockLeft();
-                lastHeldMoveTime = currentTime + 0.1;
-                break;
-
-            case CONT_DPAD_RIGHT:
-                MoveBlockRight();
-                lastHeldMoveTime = currentTime + 0.1;
-                break;
-
-            case CONT_DPAD_DOWN:
-                MoveBlockDown();
-                UpdateScore(0, 1);
-                lastHeldMoveTime = currentTime;
-                break;
-            
-            case CONT_DPAD_UP:
-                HardDrop();
-                break;
-
-            case CONT_X:
-                RotateBlock(false);
-                break;
-            
-            case CONT_B:
-                RotateBlock(true);
-                break;
-
-            default:
-                break;
+        if(startPressed){
+            if(gameOver){
+                gameOver = false;
+                Reset();
+            }
         }
 
-        if (prev_buttons & (CONT_DPAD_LEFT | CONT_DPAD_RIGHT | CONT_DPAD_DOWN)) {
-            if (currentTime - lastHeldMoveTime >= moveThreshold) {
-                if (prev_buttons & CONT_DPAD_LEFT) {
+        if(dpadLeftPressed){
+            MoveBlockLeft();
+            lastHeldMoveTime = GetTime() + 0.1;
+        }
+
+        if(dpadRightPressed){
+            MoveBlockRight();
+            lastHeldMoveTime = GetTime() + 0.1;
+        }
+
+        if(dpadDownPressed){
+            MoveBlockDown();
+            UpdateScore(0, 1);
+            lastHeldMoveTime = GetTime();
+        }
+
+        if(dpadUpPressed){
+            HardDrop();
+        }
+
+        // Rotate block counter-clockwise
+        if(xPressed){
+            RotateBlock(false);
+        }
+
+        // Rotate block clockwise
+        if(bPressed){
+            RotateBlock(true);
+        }
+
+        // Handle held buttons (for continuous movement)
+        bool dpadLeftHeld = IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_LEFT);
+        bool dpadRightHeld = IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_RIGHT);
+        bool dpadDownHeld = IsGamepadButtonDown(0, GAMEPAD_BUTTON_LEFT_FACE_DOWN);
+
+        if(dpadLeftHeld || dpadRightHeld || dpadDownHeld){
+            if(GetTime() - lastHeldMoveTime >= moveThreshold){
+                if(dpadLeftHeld){
                     MoveBlockLeft();
                 }
-                if (prev_buttons & CONT_DPAD_RIGHT) {
+                if(dpadRightHeld){
                     MoveBlockRight();
                 }
-                if (prev_buttons & CONT_DPAD_DOWN) {
+                if(dpadDownHeld){
                     MoveBlockDown();
                     UpdateScore(0, 1);
                 }
-                lastHeldMoveTime = currentTime;
+                lastHeldMoveTime = GetTime();
             }
         }
-        
-        int leftTrigger = state->ltrig;
-        if (leftTrigger > 10){
+
+        // Handle left trigger (example for holding a block)
+        float leftTrigger = GetGamepadAxisMovement(0, GAMEPAD_AXIS_LEFT_TRIGGER);
+        if(leftTrigger > 0.1f){  // Adjust the trigger sensitivity threshold
             if(!canHoldBlock) return;
             vmuManager.displayImage(currentBlock.vmuIcon);
             HoldBlock();
@@ -283,8 +305,7 @@ void Game::LockBlock(){
     }
 }
 
-bool Game::BlockFits()
-{
+bool Game::BlockFits(){
     std::vector<Position> tiles = currentBlock.GetCellPositions();
     for(Position item: tiles){
         if(grid.isCellEmpty(item.row, item.column) == false){

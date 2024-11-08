@@ -1,3 +1,8 @@
+/* KallistiOS ##version##
+   examples/dreamcast/raylib/raytris/src/position/position.cpp
+   Copyright (C) 2024 Cole Hall
+*/
+
 #include "position.h"
 
 Position::Position(int row, int column){

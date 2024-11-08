@@ -1,3 +1,8 @@
+/* KallistiOS ##version##
+   examples/dreamcast/raylib/raytris/src/constants/constants.h
+   Copyright (C) 2024 Cole Hall
+*/
+
 #pragma once
 
 namespace Constants {

@@ -1,3 +1,8 @@
+/* KallistiOS ##version##
+   examples/dreamcast/raylib/raytris/src/sound/soundManager.cpp
+   Copyright (C) 2024 Cole Hall
+*/
+
 #include "soundManager.h"
 
 SoundManager::SoundManager(){

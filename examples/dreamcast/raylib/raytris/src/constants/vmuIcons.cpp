@@ -1,3 +1,8 @@
+/* KallistiOS ##version##
+   examples/dreamcast/raylib/raytris/src/constants/vmuIcons.cpp
+   Copyright (C) 2024 Cole Hall
+*/
+
 
 const char *vmuI = 
 "................................................"
