@@ -1,8 +1,17 @@
+/* KallistiOS ##version##
+
+   examples/dreamcast/raylib/tetris/src/tetris.cpp
+   Copyright (C) 2024 Cole Hall
+
+*/
+
 #include <raylib.h>
 #include "game/game.h"
 #include "constants/constants.h"
 #include "colors/colors.h"
 #include <iostream>
+#include <string>
+#include <iostream> 
 
 #include <kos/init.h>
 #include <kos/dbgio.h>
@@ -11,7 +20,7 @@
 #include <dc/maple/controller.h>
 #include <wav/sndwav.h>
 
-double lastUpdateTime = 0;
+static double lastUpdateTime = 0;
 
 static bool EventTriggered(double interval){
     double currentTime = GetTime();
@@ -61,11 +70,10 @@ int main(int argc, char* argv[]){
         DrawText("Score", TextUIDistance, scorePaddingHeight, UIFont::medium, WHITE);
         DrawRectangleRounded({Constants::gridWidthWithOffset + UIPadding::medium, (float)scoreBoxPaddingHeight, 170, 60}, 0.3, 6, lightBlue);
 
-        char scoreText[10];
-        sprintf(scoreText, "%d", game.score);
-        Vector2 textSize = MeasureTextEx(GetFontDefault(), scoreText, UIFont::medium, 0);
+        std::string scoreText = std::to_string(game.score);
+        Vector2 textSize = MeasureTextEx(GetFontDefault(), scoreText.c_str(), UIFont::medium, 0);
 
-        DrawText(scoreText, TextUIDistance + (170 - textSize.x)/2, scoreBoxPaddingHeight + UIPadding::medium, UIFont::medium, WHITE);
+        DrawText(scoreText.c_str(), TextUIDistance + (170 - textSize.x)/2, scoreBoxPaddingHeight + UIPadding::medium, UIFont::medium, WHITE);
 
         DrawText("Next", TextUIDistance,  nextPaddingHeight, UIFont::medium, WHITE);
         DrawRectangleRounded({Constants::gridWidthWithOffset + UIPadding::medium, (float)nextBoxPaddingHeight, 170, 180}, 0.3, 6, lightBlue);
@@ -78,11 +86,11 @@ int main(int argc, char* argv[]){
         EndDrawing();
     }
 
-    printf("Finishing - Cleaning up\n");
+    std::cout << "Finishing - Cleaning up\n";  
     wav_stop(bgm);
     wav_shutdown();
     snd_stream_shutdown();
-    printf("Finished - Cleaning up\n");
+    std::cout << "Finished - Cleaning up\n";  
 
     return 0;
 }

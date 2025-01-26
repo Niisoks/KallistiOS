@@ -1,3 +1,10 @@
+/* KallistiOS ##version##
+
+   examples/dreamcast/raylib/tetris/src/game/game.h
+   Copyright (C) 2024 Cole Hall
+
+*/
+
 #pragma once
 #include "../grid/grid.h"
 #include "../blocks/blocks.cpp"

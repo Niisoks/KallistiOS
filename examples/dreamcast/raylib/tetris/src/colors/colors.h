@@ -1,3 +1,10 @@
+/* KallistiOS ##version##
+
+   examples/dreamcast/raylib/tetris/src/colors/colors.h
+   Copyright (C) 2024 Cole Hall
+
+*/
+
 #pragma once
 #include <raylib.h>
 #include <vector>

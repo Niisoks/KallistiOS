@@ -9,6 +9,7 @@ Platform-specific changes are prefixed with the platform name, otherwise the cha
 - Add thread priority boosting system [Paul Cercueil == PC]
 - Add performance monitor API [PC]
 - Add/Fixed stat() implementations for all filesystems [AB]
+<<<<<<< HEAD
 - **Dreamcast**: Add pvr palette example [AB]
 - **Dreamcast**: Cleaned up, documented, and enhanced BIOS font API [FG]
 - Rework PVR hybrid mode + IRQ handling [PC]
@@ -22,6 +23,11 @@ Platform-specific changes are prefixed with the platform name, otherwise the cha
 - **Dreamcast**: Added a set of known working purupuru bit patterns and a browsing mechanism to the rumble example [DF]
 - **Dreamcast**: Added new example to demonstrate the use of the PVR to draw lines with quads (pvr/pvrline) [Jason Martin == JM]
 - **Dreamcast**: Add network speedtest example [Andress Barajas == AB]
+=======
+- **Dreamcast**: Added network speedtest and pvr palette examples [AB]
+- **Dreamcast**: Cleaned up, documented, and enhanced BIOS font API [FG]
+- **Dreamcast**: Added raylib Tetris example by Niisoks [AB]
+>>>>>>> 0800140065d8bac59a1180999582b6e43f879373
 
 ## KallistiOS version 2.1.0
 - Cleaned up generated stubs files on a make clean [Lawrence Sebald == LS]

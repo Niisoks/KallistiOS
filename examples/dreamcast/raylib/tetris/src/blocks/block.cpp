@@ -1,3 +1,10 @@
+/* KallistiOS ##version##
+
+   examples/dreamcast/raylib/tetris/src/blocks/block.cpp
+   Copyright (C) 2024 Cole Hall
+
+*/
+
 #include "block.h"
 #include "../constants/constants.h"
 #include "../constants/vmuIcons.h"
@@ -48,7 +55,7 @@ std::vector<Position> Block::GetCellPositions(){
 // Rotate clockwise
 void Block::Rotate(){
     rotationState ++;
-    if(rotationState == (int)cells.size()){
+    if(rotationState == static_cast<int>(cells.size())){
         rotationState = 0;
     }
 }
