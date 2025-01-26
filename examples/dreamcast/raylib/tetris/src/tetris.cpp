@@ -22,7 +22,7 @@ static bool EventTriggered(double interval){
     return false;
 }
 
-int main(){
+int main(int argc, char* argv[]){
     const int screenWidth = 640;
     const int screenHeight = 480;
     wav_stream_hnd_t bgm;
